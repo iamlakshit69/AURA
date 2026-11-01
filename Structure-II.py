@@ -4,7 +4,8 @@ LiveKit version of the voice latency demo: same providers, but LiveKit Agents ru
 (turn-taking, barge-in, preemptive generation, streaming) instead of hand-written threads.
 
 Stack (all open source on the LiveKit side, Apache 2.0):
-    STT  Sarvam realtime (saaras:v3-realtime). Sarvam's own server-side VAD decides end of turn.
+    STT  STT_PROVIDER = sarvam (saaras:v3-realtime) | soniox (stt-rt-v5) | elevenlabs (scribe_v2_realtime). The provider's own
+         endpointing decides end of turn. Switch with one line in settings.env (see stt_factory.py).
     LLM  Groq, same model as before (GROQ_LLM_MODEL), reasoning off.
     TTS  Sarvam Bulbul v4 Flash. The voice follows the language Sarvam detects in your speech.
     Tool web_search (Tavily, optionally raced against Exa) and get_weather (Open-Meteo, no key).
@@ -44,6 +45,21 @@ Optional tuning (defaults shown):
     SARVAM_VAD_MIN_SPEECH_MS=80
     SPEAK_LANG_CONFIRM=1           # after a menu change, speak a short confirmation in the new language
     SPEAKER_HI / SPEAKER_PA / SPEAKER_EN   # Bulbul v4-flash persona per language (see VOICE CHOICES below)
+Wake word (openWakeWord, see wakeword.py). The agent sleeps until it hears the wake word; while it sleeps NO audio
+goes to Sarvam STT (nothing billed). After a reply it keeps listening WAKE_IDLE_S seconds, then sleeps again:
+    WAKE_ENABLED=1                 # 0 = old behaviour, always listening
+    WAKE_NAME=Anima                # the name the model is told it has
+    WAKE_MODEL=anima.onnx          # your trained model file, or a pretrained name (hey_jarvis, alexa, hey_mycroft) for testing
+    WAKE_THRESHOLD=0.5             # 0..1, higher = fewer false wakes (tune with test_wakeword.py)
+    WAKE_HITS=2                    # consecutive 80 ms chunks above the threshold needed to wake
+    WAKE_IDLE_S=5                  # seconds of listening after a reply before going back to sleep
+    WAKE_GRACE_S=8                 # seconds to wait for a question after the wake word before going back to sleep
+    WAKE_PREROLL_S=1.2             # audio before the detection that is replayed into STT (so "Anima, ..." is not clipped)
+    STT_MUTE_WHILE_REPLYING=1      # STT audio OFF while the agent thinks/speaks (nothing billed, no self-transcription).
+                                   # Voice barge-in is replaced by the stop word. 0 = old behaviour.
+    STOP_MODEL=                    # stop-word model (stop.onnx or a pretrained name). Empty = same model as WAKE_MODEL
+    STOP_THRESHOLD=                # empty = WAKE_THRESHOLD
+    STOP_HITS=                     # empty = WAKE_HITS
 Search tuning (defaults shown):
     SEARCH_TIMEOUT_S=3.0           # hard cap for the WHOLE search step (prefetch wait + retry included)
     SEARCH_MAX_RESULTS=3           # snippets handed to the model
@@ -106,6 +122,7 @@ from search_providers import Prefetcher, Search, Weather
 from usage_meter import UsageMeter
 from agent_logging import setup_logging
 from settings import get_models, load_settings
+from stt_factory import build_stt
 
 load_settings()                 # settings.env: models, voices, timings (no secrets)
 load_dotenv()                   # .env: API keys only
@@ -125,6 +142,7 @@ LLM_MODEL = MODELS["llm"]
 MAX_REPLY_TOKENS = int(env("MAX_REPLY_TOKENS", "500"))       # Hindi/Punjabi text costs many tokens per character
 TTS_MODEL = MODELS["tts"]
 STT_MODEL = MODELS["stt"]
+STT_PROVIDER = MODELS["stt_provider"]
 REASONING_EFFORT = env("GROQ_REASONING_EFFORT", "low")
 STT_LANGUAGE = env("SARVAM_RT_LANGUAGE", "auto")          # auto, hi-IN, pa-IN, en-IN
 STT_STREAM_TYPE = env("SARVAM_RT_STREAM_TYPE", "fast")    # fast | balanced | simulated
@@ -158,6 +176,18 @@ INTERRUPT_MIN_WORDS = int(env("INTERRUPT_MIN_WORDS", "1"))   # real words needed
 INTERRUPT_MIN_DURATION_S = float(env("INTERRUPT_MIN_DURATION_S", "0.5"))   # speech length that counts as a barge-in
 FALSE_INTERRUPT_S = float(env("FALSE_INTERRUPT_S", "1.3"))   # noise only: resume talking after this much silence
 PREEMPTIVE = env("PREEMPTIVE", "1") != "0"
+WAKE_ENABLED = env("WAKE_ENABLED", "1") != "0"
+WAKE_NAME = env("WAKE_NAME", "Anima") or "Anima"
+WAKE_MODEL = env("WAKE_MODEL", "anima.onnx")
+WAKE_THRESHOLD = float(env("WAKE_THRESHOLD", "0.5"))
+WAKE_HITS = int(env("WAKE_HITS", "2"))
+WAKE_IDLE_S = float(env("WAKE_IDLE_S", "5"))
+WAKE_GRACE_S = float(env("WAKE_GRACE_S", "8"))
+WAKE_PREROLL_S = float(env("WAKE_PREROLL_S", "1.2"))
+MUTE_WHILE_REPLYING = env("STT_MUTE_WHILE_REPLYING", "1") != "0"      # needs the wake gate; see wakeword.py
+STOP_MODEL = env("STOP_MODEL", "") or None
+STOP_THRESHOLD = float(env("STOP_THRESHOLD")) if env("STOP_THRESHOLD") else None
+STOP_HITS = int(env("STOP_HITS")) if env("STOP_HITS") else None
 SEARCH_FAILED_MSG = "The search failed or timed out. Tell the user in a few words that you could not check right now."
 TTS_RATE = 24000
 
@@ -349,6 +379,9 @@ class Memory:
 INSTRUCTIONS = (
     "You are a voice assistant. Your reply is spoken aloud, so use plain text only: no markdown, "
     "lists, emojis or links. "
+    "Your name is {name}. People say it to get your attention, for example '{name}, what is the weather': "
+    "ignore the name and answer the request. If they say only your name, reply with a very short greeting "
+    "asking how you can help. "
     "{language}"
     "If the user asks you to change the language you speak, in ANY wording or language (for example "
     "'talk to me in Punjabi', 'speak Hindi', 'switch to English', 'ਹਿੰਦੀ ਵਿੱਚ ਗੱਲ ਕਰੋ', 'अंग्रेज़ी में बोलो', "
@@ -413,6 +446,7 @@ class VoiceAgent(Agent):
         self.fillers_long: dict[str, list[tuple[str, rtc.AudioFrame]]] = {}
         self.last_search_ms = None
         self.ui = None                      # set in entrypoint when the dashboard is on
+        self.gate = None                    # WakeGate, set in entrypoint when the wake word is on
         self.meter = UsageMeter(USAGE_CSV, MODELS)
         self.search = Search(on_call=self.meter.search_call, tavily_key=TAVILY_KEY, exa_key=EXA_KEY, timeout=SEARCH_TIMEOUT_S,
                              max_results=SEARCH_MAX_RESULTS, snippet_chars=SEARCH_SNIPPET_CHARS,
@@ -422,7 +456,8 @@ class VoiceAgent(Agent):
         self._bg: list[asyncio.Task] = []
 
     def _build_instructions(self) -> str:
-        return (INSTRUCTIONS.format(today=datetime.now().strftime("%A, %d %B %Y"), language=language_clause(self.lang_mode))
+        return (INSTRUCTIONS.format(today=datetime.now().strftime("%A, %d %B %Y"), language=language_clause(self.lang_mode),
+                                   name=WAKE_NAME)
                 + self.mem.facts_block())
 
     # --- language + voice ---
@@ -498,6 +533,12 @@ class VoiceAgent(Agent):
         m = difflib.SequenceMatcher(None, mine, theirs, autojunk=False)
         matched = sum(b.size for b in m.get_matching_blocks() if b.size >= 4)
         return matched / len(mine) >= 0.8
+
+    async def stt_node(self, audio, model_settings):
+        # Wake word: while asleep the audio never reaches the speech recogniser (see wakeword.py).
+        if self.gate is not None:
+            audio = self.gate.filter(audio)
+        return Agent.default.stt_node(self, audio, model_settings)
 
     async def tts_node(self, text, model_settings):
         # Pick the voice from the reply itself, right before it is spoken.
@@ -715,26 +756,7 @@ class VoiceAgent(Agent):
 
 def make_components():
     """Build STT, LLM and TTS. Bad parameters raise here, so test this without a mic."""
-    stt_extra = {}
-    try:        # pass the STT model only if this version of the plugin takes one (it is also what gets priced)
-        if "model" in inspect.signature(sarvam.STTRealtime).parameters:
-            stt_extra["model"] = STT_MODEL
-        else:
-            logger.warning("sarvam.STTRealtime has no model parameter: the plugin default is used; "
-                           "STT_MODEL=%s is only used for the price lookup", STT_MODEL)
-    except (TypeError, ValueError):
-        pass
-    stt = sarvam.STTRealtime(
-        **stt_extra,
-        language=STT_LANGUAGE,
-        stream_type=STT_STREAM_TYPE,
-        mode=STT_TASK,
-        endpointing="vad",              # Sarvam's server-side VAD sends speech start/end
-        sample_rate=16000,
-        vad_min_silence_ms=VAD_SILENCE_MS,
-        vad_sot_threshold=VAD_THRESHOLD,         # higher = ignores quiet echo and room noise
-        vad_min_speech_ms=VAD_MIN_SPEECH_MS,
-    )
+    stt = build_stt(STT_PROVIDER, STT_MODEL)       # sarvam | soniox | elevenlabs, from settings.env
     llm_kwargs = {}
     if "gpt-oss" in LLM_MODEL:
         llm_kwargs["reasoning_effort"] = REASONING_EFFORT
@@ -754,17 +776,20 @@ def make_components():
     return stt, llm, tts
 
 
-def make_session(stt, llm, tts, vad=None) -> AgentSession:
+def make_session(stt, llm, tts, vad=None, allow_interruptions: bool = True) -> AgentSession:
     return AgentSession(
         stt=stt,
         llm=llm,
         tts=tts,
         vad=vad,                          # None: Sarvam's server-side VAD drives turns. LOCAL_VAD=1 adds silero for barge-in.
         turn_handling=TurnHandlingOptions(
-            turn_detection="stt",         # trust Sarvam's end-of-speech event
+            turn_detection="stt",         # trust the STT provider's end-of-speech event
             endpointing={"mode": "fixed", "min_delay": MIN_DELAY_S, "max_delay": 2.0},
             interruption={
-                "enabled": True,
+                "enabled": allow_interruptions,   # False while STT is muted during replies: the stop word interrupts
+                # LiveKit replaces the audio with SILENCE while the agent speaks and cannot be interrupted. The stop-word
+                # detector lives in stt_node and needs the real audio, so this must stay False.
+                "discard_audio_if_uninterruptible": False,
                 "mode": "vad",            # with LOCAL_VAD=0 the transcript triggers barge-in (old behaviour)
                 "min_duration": INTERRUPT_MIN_DURATION_S,
                 "min_words": INTERRUPT_MIN_WORDS,   # 1 = a real transcribed word must arrive, so quiet echo / clicks do not interrupt
@@ -953,12 +978,12 @@ def attach_logging(session: AgentSession, agent: VoiceAgent, tts, ui=None) -> No
             return
         e2e = metrics.get("e2e_latency")
         row = [
-            "sarvam_realtime", LLM_MODEL,
+            f"{STT_PROVIDER}_realtime", LLM_MODEL,
             _ms(last_user.get("transcription_delay")), _ms(last_user.get("end_of_turn_delay")),
             _ms(metrics.get("llm_node_ttft")), _ms(metrics.get("tts_node_ttfb")),
             _ms(e2e),
             # e2e starts after Sarvam's silence window; the old CSV's total added END_SILENCE_MS
-            _ms(e2e + VAD_SILENCE_MS / 1000) if isinstance(e2e, (int, float)) else "",
+            _ms(e2e + VAD_SILENCE_MS / 1000) if isinstance(e2e, (int, float)) and STT_PROVIDER == "sarvam" else "",
             agent.last_search_ms if agent.last_search_ms is not None else "",
         ]
         if ui:
@@ -1002,25 +1027,59 @@ async def entrypoint(ctx: JobContext) -> None:
             vad = inference.VAD()         # same VAD as the starter template; runs locally
         except Exception as e:
             logger.warning("local VAD unavailable (%r): voice interruption will be slow", e)
-    session = make_session(stt, llm, tts, vad)
+    gate = None
+    if WAKE_ENABLED:
+        try:
+            from wakeword import WakeGate       # imported here so a missing openwakeword never stops the agent
+            gate = await asyncio.to_thread(      # loads the ONNX models: keep it off the event loop
+                WakeGate, WAKE_MODEL, name=WAKE_NAME, threshold=WAKE_THRESHOLD, idle_s=WAKE_IDLE_S,
+                grace_s=WAKE_GRACE_S, preroll_s=WAKE_PREROLL_S, hits=WAKE_HITS,
+                mute_while_replying=MUTE_WHILE_REPLYING, stop_model=STOP_MODEL,
+                stop_threshold=STOP_THRESHOLD, stop_hits=STOP_HITS)
+        except Exception as e:
+            logger.error("wake word is OFF, the agent listens all the time: %r", e)
+            print(f"  [wake] OFF, always listening: {e}")
+    muted = bool(gate and gate.mute_while_replying)     # STT off during replies: only the stop word can interrupt
+    session = make_session(stt, llm, tts, vad, allow_interruptions=not muted)
     agent = VoiceAgent()
     agent.tts_engine = tts
     loop = asyncio.get_running_loop()
+    agent.gate = gate
+    if gate:                                    # bill the audio the gate really sends to STT (any provider)
+        agent.meter.external_stt = True
+        gate.on_billed = lambda sec: agent.meter.add(stt_audio_s=sec)
     ui = None
     if UI_ENABLED and sys.stdout.isatty():
         try:
             from cli_ui import VoiceUI          # imported here so a missing 'rich' never stops the agent
-            ui = VoiceUI(stt="sarvam realtime", llm=LLM_MODEL, tts=TTS_MODEL,
+            ui = VoiceUI(stt=f"{STT_PROVIDER} {STT_MODEL}", llm=LLM_MODEL, tts=TTS_MODEL,
                          voice=agent.voice_label(INITIAL_LANG), meter=agent.meter,
                          on_mute=lambda muted: session.input.set_audio_enabled(not muted),
                          languages=UI_LANGUAGES, language=agent.lang_mode, guard=ECHO_GUARD,
-                         on_interrupt=lambda: loop.call_soon_threadsafe(lambda: session.interrupt()),
+                         on_interrupt=lambda: loop.call_soon_threadsafe(lambda: session.interrupt(force=True)),
+                         wake_name=WAKE_NAME if gate else "",
+                         # key W: wake / sleep by hand (also from the keyboard thread)
+                         on_wake=(lambda: loop.call_soon_threadsafe(
+                             lambda: gate.sleep("key") if gate.awake else gate.wake("key"))) if gate else None,
                          # called from the keyboard thread, so hand the work to the event loop
                          on_language=lambda code: loop.call_soon_threadsafe(
                              lambda: spawn(agent.menu_language(code), "language")))
             agent.ui = ui
         except ImportError as e:
             print(f"  [ui] dashboard off ({e}). pip install rich, or set UI=0")
+    if gate:
+        def _wake_changed(awake: bool, reason: str) -> None:
+            if ui:
+                ui.set_awake(awake, reason)
+            else:
+                print(f"  [wake] {'AWAKE' if awake else 'asleep'} ({reason})")
+        gate.on_change = _wake_changed
+        gate.attach(session)
+        if ui:
+            ui.set_awake(False, "start")
+        else:
+            print(f"  [wake] asleep: say '{WAKE_NAME}' to start"
+                  + (f"; say the stop word ({gate.stop_label}) to interrupt a reply" if muted else ""))
     attach_logging(session, agent, tts, ui)
     ctx.add_shutdown_callback(agent.aclose)
     agent._bg.append(asyncio.create_task(agent.warm()))   # open search connections while the session starts

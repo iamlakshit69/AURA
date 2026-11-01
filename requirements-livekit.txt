@@ -1,6 +1,9 @@
-livekit-agents[sarvam,groq]>=1.8.6,<2
+livekit-agents[sarvam,groq,soniox,elevenlabs]>=1.8.6,<2
 httpx
 python-dotenv
 rich
+numpy
+openwakeword>=0.6        # wake word. If pip fails on onnxruntime/scipy (Python 3.14), use a 3.12 or 3.13 venv
+sounddevice              # only for test_wakeword.py (live microphone tuning)
 # optional, for LOCAL_VAD=1 (faster barge-in):
 # livekit-plugins-silero

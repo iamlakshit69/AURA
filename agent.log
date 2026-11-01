@@ -114,3 +114,411 @@ livekit.agents._exceptions.APITimeoutError: Timed out connecting to Sarvam realt
 2026-11-01 18:36:30,129 | INFO    | voice-agent.usage | reply #3 | llm 1965 in (0 cached) / 115 out, tts 158 chars, stt 20.25 s (since last reply), search tavily 0 (0 cr) exa 0 | COST 0.49864 INR (llm 0.01726, tts 0.31600, stt 0.16537, search 0.00000)
 2026-11-01 18:37:15,252 | INFO    | voice-agent.usage | session 20261101-183530 ended | 3 replies | [usage] session total: llm 4551 in / 222 out tokens, tts 272 chars (+336 filler pre-render), stt 96.4 s, tavily 0 credits, exa 0 requests, session length 105 s | SESSION COST 2.04 INR (llm 0.0387, tts 1.2160, stt 0.7873, search 0.0000)
 2026-11-01 18:37:15,254 | INFO    | voice-agent.usage | session 20261101-183530 cost | llm 0.03872 INR tts 1.22 INR stt 0.78727 INR search 0.00000 INR | TOTAL 2.04 INR | replies 0.99962 INR + fillers/unfinished turns 1.04 INR
+2026-11-01 20:01:13,733 | INFO    | voice-agent | ==================== process 36434 started ====================
+2026-11-01 20:01:14,236 | WARNING | livekit.agents | no warmed process available for job, waiting for one to be created
+2026-11-01 20:01:14,412 | WARNING | voice-agent | sarvam.STTRealtime has no model parameter: the plugin default is used; STT_MODEL=saaras:v3-realtime is only used for the price lookup
+2026-11-01 20:01:14,413 | WARNING | livekit.agents | LIVEKIT_INFERENCE_URL is set but LIVEKIT_API_KEY, LIVEKIT_API_SECRET missing; falling back to the turn-detector-v1-mini model
+2026-11-01 20:01:14,417 | INFO    | voice-agent.usage | session 20261101-200114 started | llm openai/gpt-oss-20b | tts bulbul:v4-flash | stt saaras:v3-realtime | report currency INR | prices file prices.ini
+2026-11-01 20:01:15,886 | WARNING | livekit.agents | event loop blocked for 225ms at "/opt/homebrew/Cellar/python@3.14/3.14.4/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/selector_events.py", line 653, in _sock_connect; synchronous work on the agent loop delays audio and turn handling, move it to a thread or an async client
+2026-11-01 20:01:16,545 | WARNING | livekit.agents | event loop blocked for 210ms at "/opt/homebrew/Cellar/python@3.14/3.14.4/Frameworks/Python.framework/Versions/3.14/lib/python3.14/ssl.py", line 868, in read; synchronous work on the agent loop delays audio and turn handling, move it to a thread or an async client
+2026-11-01 20:01:16,790 | WARNING | livekit.agents | event loop blocked for 225ms at "/opt/homebrew/Cellar/python@3.14/3.14.4/Frameworks/Python.framework/Versions/3.14/lib/python3.14/ssl.py", line 868, in read; synchronous work on the agent loop delays audio and turn handling, move it to a thread or an async client
+2026-11-01 20:01:45,134 | INFO    | voice-agent.wake | wake word ready: model hey_jarvis, threshold 0.50, hits 2, idle 5.0 s, grace 8.0 s
+2026-11-01 20:01:45,147 | WARNING | livekit.agents | metrics_collected is deprecated. Use session_usage_updated for usage tracking and ChatMessage.metrics for per-turn latency.
+2026-11-01 20:02:00,178 | WARNING | livekit.agents | event loop blocked for 15002ms at "/Users/lakshitsingh/Code/Test/cli_ui.py", line 812, in _claim_stdin; synchronous work on the agent loop delays audio and turn handling, move it to a thread or an async client
+2026-11-01 20:02:00,188 | ERROR   | livekit.plugins.sarvam.log | Failed to connect to Sarvam realtime STT WebSocket
+Traceback (most recent call last):
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/tasks.py", line 488, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/aiohttp/client.py", line 1312, in _ws_connect
+    resp = await self.request(
+           ^^^^^^^^^^^^^^^^^^^
+    ...<11 lines>...
+    )
+    ^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/aiohttp/client.py", line 900, in _request
+    resp = await handler(req)
+           ^^^^^^^^^^^^^^^^^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/aiohttp/client.py", line 854, in _connect_and_send_request
+    conn = await self._connector.connect(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        req, traces=traces, timeout=real_timeout
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/aiohttp/connector.py", line 665, in connect
+    proto = await self._create_connection(req, traces, timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/aiohttp/connector.py", line 1263, in _create_connection
+    _, proto = await self._create_direct_connection(req, traces, timeout)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/aiohttp/connector.py", line 1592, in _create_direct_connection
+    hosts = await self._resolve_host(host, port, traces=traces)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/aiohttp/connector.py", line 1170, in _resolve_host
+    await future
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/plugins/sarvam/stt_streaming.py", line 899, in _connect_ws
+    ws = await asyncio.wait_for(
+         ^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/tasks.py", line 487, in wait_for
+    async with timeouts.timeout(timeout):
+               ~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/timeouts.py", line 114, in __aexit__
+    raise TimeoutError from exc_val
+TimeoutError
+2026-11-01 20:02:00,203 | WARNING | livekit.agents | failed to synthesize speech: Sarvam TTS API request timed out (caused by CancelledError), retrying in 0.1s
+2026-11-01 20:02:00,367 | INFO    | voice-agent.wake | AWAKE (wake word, best score 0.97): STT on
+2026-11-01 20:02:00,380 | WARNING | livekit.agents | event loop blocked for 183ms at "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/onnxruntime/capi/onnxruntime_inference_collection.py", line 395, in run; synchronous work on the agent loop delays audio and turn handling, move it to a thread or an async client
+2026-11-01 20:02:00,386 | WARNING | livekit.agents | STT stream ended on an unrecoverable error, recreating
+Traceback (most recent call last):
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/tasks.py", line 488, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/aiohttp/client.py", line 1312, in _ws_connect
+    resp = await self.request(
+           ^^^^^^^^^^^^^^^^^^^
+    ...<11 lines>...
+    )
+    ^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/aiohttp/client.py", line 900, in _request
+    resp = await handler(req)
+           ^^^^^^^^^^^^^^^^^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/aiohttp/client.py", line 854, in _connect_and_send_request
+    conn = await self._connector.connect(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        req, traces=traces, timeout=real_timeout
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/aiohttp/connector.py", line 665, in connect
+    proto = await self._create_connection(req, traces, timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/aiohttp/connector.py", line 1263, in _create_connection
+    _, proto = await self._create_direct_connection(req, traces, timeout)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/aiohttp/connector.py", line 1592, in _create_direct_connection
+    hosts = await self._resolve_host(host, port, traces=traces)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/aiohttp/connector.py", line 1170, in _resolve_host
+    await future
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/plugins/sarvam/stt_streaming.py", line 786, in _run
+    ws = await self._connect_ws()
+         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/plugins/sarvam/stt_streaming.py", line 899, in _connect_ws
+    ws = await asyncio.wait_for(
+         ^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/tasks.py", line 487, in wait_for
+    async with timeouts.timeout(timeout):
+               ~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/timeouts.py", line 114, in __aexit__
+    raise TimeoutError from exc_val
+TimeoutError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/agents/voice/audio_recognition.py", line 245, in _stt_pump
+    async for ev in node:
+    ...<3 lines>...
+        self._event_ch.send_nowait(ev)
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/agents/voice/agent.py", line 561, in stt_node
+    async for event in stream:
+        yield event
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/agents/stt/stt.py", line 623, in __anext__
+    raise exc  # noqa: B904
+    ^^^^^^^^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/agents/stt/stt.py", line 487, in _main_task
+    return await self._run()
+           ^^^^^^^^^^^^^^^^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/plugins/sarvam/stt_streaming.py", line 797, in _run
+    raise APITimeoutError("Timed out connecting to Sarvam realtime STT") from e
+livekit.agents._exceptions.APITimeoutError: Timed out connecting to Sarvam realtime STT (caused by CancelledError)
+2026-11-01 20:02:08,093 | INFO    | voice-agent | latency | e2e 1351 ms | stt 129 | end-of-turn 251 | llm first token 700 | tts first byte 387 | search -
+2026-11-01 20:02:08,224 | INFO    | voice-agent | fillers cached: {'en': 2, 'hi': 2, 'pa': 2}, long: {'en': 2, 'hi': 2, 'pa': 2}
+2026-11-01 20:02:09,309 | INFO    | voice-agent.usage | reply #1 | llm 880 in (0 cached) / 43 out, tts 36 chars, stt 5.7 s (since last reply), search tavily 0 (0 cr) exa 0 | COST 0.12604 INR (llm 0.00749, tts 0.07200, stt 0.04655, search 0.00000)
+2026-11-01 20:02:13,182 | INFO    | voice-agent.wake | ASLEEP (idle 5 s): STT off, waiting for 'Anima'
+2026-11-01 20:02:26,441 | INFO    | voice-agent.wake | AWAKE (wake word, best score 0.97): STT on
+2026-11-01 20:02:45,613 | INFO    | voice-agent | latency | e2e  ms | stt  | end-of-turn  | llm first token 698 | tts first byte 245 | search 1573
+2026-11-01 20:02:46,820 | INFO    | voice-agent.usage | reply #2 | llm 5006 in (0 cached) / 209 out, tts 175 chars, stt 28.5 s (since last reply), search tavily 0 (0 cr) exa 0 | COST 0.62433 INR (llm 0.04158, tts 0.35000, stt 0.23275, search 0.00000)
+2026-11-01 20:02:48,880 | INFO    | voice-agent | latency | e2e  ms | stt  | end-of-turn  | llm first token 407 | tts first byte 231 | search -
+2026-11-01 20:02:50,094 | INFO    | voice-agent.usage | reply #3 | llm 0 in (0 cached) / 0 out, tts 24 chars, stt 0.0 s (since last reply), search tavily 0 (0 cr) exa 0 | COST 0.04800 INR (llm 0.00000, tts 0.04800, stt 0.00000, search 0.00000)
+2026-11-01 20:03:00,046 | INFO    | voice-agent.wake | ASLEEP (idle 5 s): STT off, waiting for 'Anima'
+2026-11-01 20:03:03,397 | INFO    | voice-agent.wake | AWAKE (wake word, best score 0.97): STT on
+2026-11-01 20:03:22,983 | INFO    | voice-agent | latency | e2e  ms | stt  | end-of-turn  | llm first token 629 | tts first byte 230 | search -
+2026-11-01 20:03:24,202 | INFO    | voice-agent.usage | reply #4 | llm 3559 in (0 cached) / 142 out, tts 113 chars, stt 34.7 s (since last reply), search tavily 0 (0 cr) exa 0 | COST 0.53876 INR (llm 0.02938, tts 0.22600, stt 0.28338, search 0.00000)
+2026-11-01 20:03:28,070 | INFO    | voice-agent.wake | ASLEEP (idle 5 s): STT off, waiting for 'Anima'
+2026-11-01 20:04:13,801 | INFO    | voice-agent.wake | AWAKE (wake word, best score 0.91): STT on
+2026-11-01 20:04:18,937 | INFO    | voice-agent.usage | search request sent: tavily (1 credit)
+2026-11-01 20:04:18,939 | INFO    | voice-agent.usage | search request sent: exa
+2026-11-01 20:04:19,664 | INFO    | voice-agent.search | search[exa] 727 ms ok
+2026-11-01 20:04:44,278 | INFO    | voice-agent | latency | e2e  ms | stt  | end-of-turn  | llm first token 554 | tts first byte 231 | search 730
+2026-11-01 20:04:45,487 | INFO    | voice-agent.usage | reply #5 | llm 5740 in (2048 cached) / 234 out, tts 516 chars, stt 36.1 s (since last reply), search tavily 1 (1 cr) exa 1 | COST 2.51 INR (llm 0.04014, tts 1.03200, stt 0.29482, search 1.13892)
+2026-11-01 20:04:50,184 | INFO    | voice-agent | latency | e2e  ms | stt  | end-of-turn  | llm first token 617 | tts first byte 236 | search -
+2026-11-01 20:04:51,402 | INFO    | voice-agent.usage | reply #6 | llm 0 in (0 cached) / 0 out, tts 97 chars, stt 5.1 s (since last reply), search tavily 0 (0 cr) exa 0 | COST 0.23565 INR (llm 0.00000, tts 0.19400, stt 0.04165, search 0.00000)
+2026-11-01 20:04:55,269 | INFO    | voice-agent.wake | ASLEEP (idle 5 s): STT off, waiting for 'Anima'
+2026-11-01 20:04:56,186 | INFO    | voice-agent.usage | session 20261101-200114 ended | 6 replies | [usage] session total: llm 15185 in / 628 out tokens, tts 961 chars (+336 filler pre-render), stt 110.1 s, tavily 1 credits, exa 1 requests, session length 222 s | SESSION COST 4.75 INR (llm 0.1186, tts 2.5940, stt 0.8991, search 1.1389)
+2026-11-01 20:04:56,188 | INFO    | voice-agent.usage | session 20261101-200114 cost | llm 0.11859 INR tts 2.59 INR stt 0.89915 INR search 1.14 INR | TOTAL 4.75 INR | replies 4.08 INR + fillers/unfinished turns 0.67200 INR
+2026-11-01 20:42:17,104 | INFO    | voice-agent | ==================== process 37092 started ====================
+2026-11-01 20:42:52,476 | INFO    | voice-agent.pricing | prices reloaded from prices.ini
+2026-11-01 20:42:52,479 | INFO    | voice-agent.pricing | prices saved to prices.ini: [stt:stt-rt-v5]
+2026-11-01 20:42:52,993 | WARNING | livekit.agents | no warmed process available for job, waiting for one to be created
+2026-11-01 20:42:53,185 | ERROR   | livekit.agents | unhandled exception while running the job task
+Traceback (most recent call last):
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/agents/ipc/job_proc_lazy_main.py", line 353, in _traceable_entrypoint
+    await self._job_entrypoint_fnc(job_ctx)
+  File "/Users/lakshitsingh/Code/Test/Structure-II.py", line 1016, in entrypoint
+    stt, llm, tts = make_components()
+                    ~~~~~~~~~~~~~~~^^
+  File "/Users/lakshitsingh/Code/Test/Structure-II.py", line 759, in make_components
+    stt = build_stt(STT_PROVIDER, STT_MODEL)       # sarvam | soniox | elevenlabs, from settings.env
+  File "/Users/lakshitsingh/Code/Test/stt_factory.py", line 32, in build_stt
+    return _soniox(model)
+  File "/Users/lakshitsingh/Code/Test/stt_factory.py", line 63, in _soniox
+    from livekit.plugins import soniox
+ImportError: cannot import name 'soniox' from 'livekit.plugins' (unknown location)
+2026-11-01 20:44:27,157 | INFO    | voice-agent | ==================== process 37171 started ====================
+2026-11-01 20:44:27,541 | WARNING | livekit.agents | no warmed process available for job, waiting for one to be created
+2026-11-01 20:44:27,739 | ERROR   | livekit.agents | unhandled exception while running the job task
+Traceback (most recent call last):
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/agents/ipc/job_proc_lazy_main.py", line 353, in _traceable_entrypoint
+    await self._job_entrypoint_fnc(job_ctx)
+  File "/Users/lakshitsingh/Code/Test/Structure-II.py", line 1016, in entrypoint
+    stt, llm, tts = make_components()
+                    ~~~~~~~~~~~~~~~^^
+  File "/Users/lakshitsingh/Code/Test/Structure-II.py", line 759, in make_components
+    stt = build_stt(STT_PROVIDER, STT_MODEL)       # sarvam | soniox | elevenlabs, from settings.env
+  File "/Users/lakshitsingh/Code/Test/stt_factory.py", line 32, in build_stt
+    return _soniox(model)
+  File "/Users/lakshitsingh/Code/Test/stt_factory.py", line 63, in _soniox
+    from livekit.plugins import soniox
+ImportError: cannot import name 'soniox' from 'livekit.plugins' (unknown location)
+2026-11-01 20:45:02,045 | INFO    | voice-agent | ==================== process 37220 started ====================
+2026-11-01 20:45:02,311 | WARNING | livekit.agents | no warmed process available for job, waiting for one to be created
+2026-11-01 20:45:02,406 | ERROR   | livekit.agents | unhandled exception while running the job task
+Traceback (most recent call last):
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/agents/ipc/job_proc_lazy_main.py", line 353, in _traceable_entrypoint
+    await self._job_entrypoint_fnc(job_ctx)
+  File "/Users/lakshitsingh/Code/Test/Structure-II.py", line 1016, in entrypoint
+    stt, llm, tts = make_components()
+                    ~~~~~~~~~~~~~~~^^
+  File "/Users/lakshitsingh/Code/Test/Structure-II.py", line 759, in make_components
+    stt = build_stt(STT_PROVIDER, STT_MODEL)       # sarvam | soniox | elevenlabs, from settings.env
+  File "/Users/lakshitsingh/Code/Test/stt_factory.py", line 32, in build_stt
+    return _soniox(model)
+  File "/Users/lakshitsingh/Code/Test/stt_factory.py", line 63, in _soniox
+    from livekit.plugins import soniox
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/plugins/soniox/__init__.py", line 57, in <module>
+    Plugin.register_plugin(SonioxPlugin())
+    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/agents/plugin.py", line 33, in register_plugin
+    raise RuntimeError("Plugins must be registered on the main thread")
+RuntimeError: Plugins must be registered on the main thread
+2026-11-01 20:45:35,246 | INFO    | voice-agent | ==================== process 37253 started ====================
+2026-11-01 20:45:35,439 | WARNING | livekit.agents | no warmed process available for job, waiting for one to be created
+2026-11-01 20:45:35,625 | ERROR   | livekit.agents | unhandled exception while running the job task
+Traceback (most recent call last):
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/agents/ipc/job_proc_lazy_main.py", line 353, in _traceable_entrypoint
+    await self._job_entrypoint_fnc(job_ctx)
+  File "/Users/lakshitsingh/Code/Test/Structure-II.py", line 1016, in entrypoint
+    stt, llm, tts = make_components()
+                    ~~~~~~~~~~~~~~~^^
+  File "/Users/lakshitsingh/Code/Test/Structure-II.py", line 759, in make_components
+    stt = build_stt(STT_PROVIDER, STT_MODEL)       # sarvam | soniox | elevenlabs, from settings.env
+  File "/Users/lakshitsingh/Code/Test/stt_factory.py", line 32, in build_stt
+    return _soniox(model)
+  File "/Users/lakshitsingh/Code/Test/stt_factory.py", line 63, in _soniox
+    from livekit.plugins import soniox
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/plugins/soniox/__init__.py", line 57, in <module>
+    Plugin.register_plugin(SonioxPlugin())
+    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/agents/plugin.py", line 33, in register_plugin
+    raise RuntimeError("Plugins must be registered on the main thread")
+RuntimeError: Plugins must be registered on the main thread
+2026-11-01 20:46:43,535 | INFO    | voice-agent | ==================== process 37376 started ====================
+2026-11-01 20:46:43,855 | WARNING | livekit.agents | no warmed process available for job, waiting for one to be created
+2026-11-01 20:46:45,271 | INFO    | voice-agent.wake | wake word ready: model hey_jarvis, threshold 0.50, hits 2, idle 5.0 s, grace 8.0 s | STT muted while replying: True (stop word: hey_jarvis, threshold 0.50, hits 2)
+2026-11-01 20:46:45,272 | WARNING | livekit.agents | LIVEKIT_INFERENCE_URL is set but LIVEKIT_API_KEY, LIVEKIT_API_SECRET missing; falling back to the turn-detector-v1-mini model
+2026-11-01 20:46:45,276 | INFO    | voice-agent.usage | session 20261101-204645 started | llm openai/gpt-oss-20b | tts bulbul:v4-flash | stt stt-rt-v5 (soniox) | report currency INR | prices file prices.ini
+2026-11-01 20:46:45,291 | WARNING | livekit.agents | metrics_collected is deprecated. Use session_usage_updated for usage tracking and ChatMessage.metrics for per-turn latency.
+2026-11-01 20:46:47,529 | WARNING | livekit.agents | event loop blocked for 2198ms at "/Users/lakshitsingh/Code/Test/cli_ui.py", line 812, in _claim_stdin; synchronous work on the agent loop delays audio and turn handling, move it to a thread or an async client
+2026-11-01 20:46:48,840 | ERROR   | livekit.plugins.soniox | WebSocket error: 402 - Organization balance exhausted. Please either add funds manually or enable autopay.
+2026-11-01 20:46:48,849 | WARNING | livekit.agents | STT stream ended on an unrecoverable error, recreating
+Traceback (most recent call last):
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/agents/stt/stt.py", line 620, in __anext__
+    val = await self._event_aiter.__anext__()
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+StopAsyncIteration
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/agents/voice/audio_recognition.py", line 245, in _stt_pump
+    async for ev in node:
+    ...<3 lines>...
+        self._event_ch.send_nowait(ev)
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/agents/voice/agent.py", line 561, in stt_node
+    async for event in stream:
+        yield event
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/agents/stt/stt.py", line 623, in __anext__
+    raise exc  # noqa: B904
+    ^^^^^^^^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/agents/stt/stt.py", line 487, in _main_task
+    return await self._run()
+           ^^^^^^^^^^^^^^^^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/plugins/soniox/stt.py", line 362, in _run
+    task.result()
+    ~~~~~~~~~~~^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/plugins/soniox/stt.py", line 664, in _recv_messages_task
+    raise APIStatusError(
+    ...<3 lines>...
+    )
+livekit.agents._exceptions.APIStatusError: message='Soniox STT error: 402 - Organization balance exhausted. Please either add funds manually or enable autopay.', status_code=402, retryable=False, body={'tokens': [], 'final_audio_proc_ms': 0, 'total_audio_proc_ms': 0, 'error_code': 402, 'error_type': 'organization_balance_exhausted', 'error_message': 'Organization balance exhausted. Please either add funds manually or enable autopay.', 'more_info': 'https://soniox.com/docs/api-reference/errors#organization-balance-exhausted', 'request_id': '685358a1-7000-4c99-938f-1d02b2266162'}
+2026-11-01 20:46:50,683 | ERROR   | livekit.plugins.soniox | WebSocket error: 402 - Organization balance exhausted. Please either add funds manually or enable autopay.
+2026-11-01 20:46:50,687 | WARNING | livekit.agents | STT stream ended on an unrecoverable error, recreating
+Traceback (most recent call last):
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/agents/stt/stt.py", line 620, in __anext__
+    val = await self._event_aiter.__anext__()
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+StopAsyncIteration
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/agents/voice/audio_recognition.py", line 245, in _stt_pump
+    async for ev in node:
+    ...<3 lines>...
+        self._event_ch.send_nowait(ev)
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/agents/voice/agent.py", line 561, in stt_node
+    async for event in stream:
+        yield event
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/agents/stt/stt.py", line 623, in __anext__
+    raise exc  # noqa: B904
+    ^^^^^^^^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/agents/stt/stt.py", line 487, in _main_task
+    return await self._run()
+           ^^^^^^^^^^^^^^^^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/plugins/soniox/stt.py", line 362, in _run
+    task.result()
+    ~~~~~~~~~~~^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/plugins/soniox/stt.py", line 664, in _recv_messages_task
+    raise APIStatusError(
+    ...<3 lines>...
+    )
+livekit.agents._exceptions.APIStatusError: message='Soniox STT error: 402 - Organization balance exhausted. Please either add funds manually or enable autopay.', status_code=402, retryable=False, body={'tokens': [], 'final_audio_proc_ms': 0, 'total_audio_proc_ms': 0, 'error_code': 402, 'error_type': 'organization_balance_exhausted', 'error_message': 'Organization balance exhausted. Please either add funds manually or enable autopay.', 'more_info': 'https://soniox.com/docs/api-reference/errors#organization-balance-exhausted', 'request_id': 'ef019c9c-39e1-4a61-a3bc-39c5a8320a20'}
+2026-11-01 20:46:52,524 | ERROR   | livekit.plugins.soniox | WebSocket error: 402 - Organization balance exhausted. Please either add funds manually or enable autopay.
+2026-11-01 20:46:52,531 | WARNING | livekit.agents | STT stream ended on an unrecoverable error, recreating
+Traceback (most recent call last):
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/agents/stt/stt.py", line 620, in __anext__
+    val = await self._event_aiter.__anext__()
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+StopAsyncIteration
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/agents/voice/audio_recognition.py", line 245, in _stt_pump
+    async for ev in node:
+    ...<3 lines>...
+        self._event_ch.send_nowait(ev)
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/agents/voice/agent.py", line 561, in stt_node
+    async for event in stream:
+        yield event
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/agents/stt/stt.py", line 623, in __anext__
+    raise exc  # noqa: B904
+    ^^^^^^^^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/agents/stt/stt.py", line 487, in _main_task
+    return await self._run()
+           ^^^^^^^^^^^^^^^^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/plugins/soniox/stt.py", line 362, in _run
+    task.result()
+    ~~~~~~~~~~~^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/plugins/soniox/stt.py", line 664, in _recv_messages_task
+    raise APIStatusError(
+    ...<3 lines>...
+    )
+livekit.agents._exceptions.APIStatusError: message='Soniox STT error: 402 - Organization balance exhausted. Please either add funds manually or enable autopay.', status_code=402, retryable=False, body={'tokens': [], 'final_audio_proc_ms': 0, 'total_audio_proc_ms': 0, 'error_code': 402, 'error_type': 'organization_balance_exhausted', 'error_message': 'Organization balance exhausted. Please either add funds manually or enable autopay.', 'more_info': 'https://soniox.com/docs/api-reference/errors#organization-balance-exhausted', 'request_id': '1045deb0-02a2-4ad8-8dbe-b640bfcb38f6'}
+2026-11-01 20:46:54,689 | ERROR   | livekit.plugins.soniox | WebSocket error: 402 - Organization balance exhausted. Please either add funds manually or enable autopay.
+2026-11-01 20:46:54,694 | ERROR   | livekit.agents | AgentSession is closing due to unrecoverable error: message='Soniox STT error: 402 - Organization balance exhausted. Please either add funds manually or enable autopay.', status_code=402, retryable=False, body={'tokens': [], 'final_audio_proc_ms': 0, 'total_audio_proc_ms': 0, 'error_code': 402, 'error_type': 'organization_balance_exhausted', 'error_message': 'Organization balance exhausted. Please either add funds manually or enable autopay.', 'more_info': 'https://soniox.com/docs/api-reference/errors#organization-balance-exhausted', 'request_id': '0dde2484-5b47-444c-8328-9a9036e9c5ce'}
+2026-11-01 20:46:55,378 | INFO    | voice-agent | fillers cached: {'en': 2, 'hi': 2, 'pa': 2}, long: {'en': 2, 'hi': 2, 'pa': 2}
+2026-11-01 20:47:14,071 | INFO    | voice-agent.wake | AWAKE (key, best score 0.00): STT on
+2026-11-01 20:47:20,083 | INFO    | voice-agent.wake | ASLEEP (key): STT off, waiting for 'Anima'
+2026-11-01 20:47:21,568 | INFO    | voice-agent.usage | session 20261101-204645 ended | 0 replies | [usage] session total: llm 0 in / 0 out tokens, tts 0 chars (+336 filler pre-render), stt 0.0 s, tavily 0 credits, exa 0 requests, session length 36 s | SESSION COST 0.67200 INR (llm 0.0000, tts 0.6720, stt 0.0000, search 0.0000)
+2026-11-01 20:47:21,569 | INFO    | voice-agent.usage | session 20261101-204645 cost | llm 0.00000 INR tts 0.67200 INR stt 0.00000 INR search 0.00000 INR | TOTAL 0.67200 INR | replies 0.00000 INR + fillers/unfinished turns 0.67200 INR
+2026-11-01 20:57:02,958 | INFO    | voice-agent | ==================== process 37713 started ====================
+2026-11-01 20:58:06,904 | INFO    | voice-agent.pricing | prices reloaded from prices.ini
+2026-11-01 20:58:06,907 | INFO    | voice-agent.pricing | prices saved to prices.ini: [stt:scribe_v2_realtime]
+2026-11-01 20:58:07,429 | WARNING | livekit.agents | no warmed process available for job, waiting for one to be created
+2026-11-01 20:58:08,700 | INFO    | voice-agent.wake | wake word ready: model hey_jarvis, threshold 0.50, hits 2, idle 5.0 s, grace 8.0 s | STT muted while replying: True (stop word: hey_jarvis, threshold 0.50, hits 2)
+2026-11-01 20:58:08,701 | WARNING | livekit.agents | LIVEKIT_INFERENCE_URL is set but LIVEKIT_API_KEY, LIVEKIT_API_SECRET missing; falling back to the turn-detector-v1-mini model
+2026-11-01 20:58:08,708 | INFO    | voice-agent.usage | session 20261101-205808 started | llm openai/gpt-oss-20b | tts bulbul:v4-flash | stt scribe_v2_realtime (elevenlabs) | report currency INR | prices file prices.ini
+2026-11-01 20:58:08,726 | WARNING | livekit.agents | metrics_collected is deprecated. Use session_usage_updated for usage tracking and ChatMessage.metrics for per-turn latency.
+2026-11-01 20:58:11,156 | WARNING | livekit.agents | event loop blocked for 2355ms at "/Users/lakshitsingh/Code/Test/cli_ui.py", line 812, in _claim_stdin; synchronous work on the agent loop delays audio and turn handling, move it to a thread or an async client
+2026-11-01 20:58:17,079 | INFO    | voice-agent.wake | AWAKE (wake word, best score 0.99): STT on
+2026-11-01 20:58:18,519 | INFO    | voice-agent.wake | RESPONDING: STT off, listening for the stop word
+2026-11-01 20:58:22,696 | INFO    | voice-agent | latency | e2e 2758 ms | stt 0 | end-of-turn 251 | llm first token 1967 | tts first byte 447 | search -
+2026-11-01 20:58:23,973 | INFO    | voice-agent.usage | reply #1 | llm 882 in (0 cached) / 51 out, tts 32 chars, stt 3.93 s (since last reply), search tavily 0 (0 cr) exa 0 | COST 0.11214 INR (llm 0.00773, tts 0.06400, stt 0.04041, search 0.00000)
+2026-11-01 20:58:24,125 | INFO    | voice-agent.wake | RESPONDING: STT off, listening for the stop word
+2026-11-01 20:58:25,749 | INFO    | voice-agent | fillers cached: {'en': 2, 'hi': 2, 'pa': 2}, long: {'en': 2, 'hi': 2, 'pa': 2}
+2026-11-01 20:58:29,896 | INFO    | voice-agent | latency | e2e 3601 ms | stt 0 | end-of-turn 251 | llm first token 3074 | tts first byte 245 | search -
+2026-11-01 20:58:31,174 | INFO    | voice-agent.usage | reply #2 | llm 905 in (0 cached) / 68 out, tts 33 chars, stt 1.4 s (since last reply), search tavily 0 (0 cr) exa 0 | COST 0.08877 INR (llm 0.00838, tts 0.06600, stt 0.01439, search 0.00000)
+2026-11-01 20:58:35,045 | INFO    | voice-agent.wake | ASLEEP (idle 5 s): STT off, waiting for 'Anima'
+2026-11-01 20:58:49,379 | INFO    | voice-agent.wake | AWAKE (wake word, best score 0.98): STT on
+2026-11-01 20:58:50,668 | INFO    | voice-agent.wake | RESPONDING: STT off, listening for the stop word
+2026-11-01 20:58:55,698 | INFO    | voice-agent | latency | e2e 3266 ms | stt 0 | end-of-turn 251 | llm first token 2675 | tts first byte 242 | search -
+2026-11-01 20:58:56,981 | INFO    | voice-agent.usage | reply #3 | llm 929 in (0 cached) / 34 out, tts 32 chars, stt 7.53 s (since last reply), search tavily 0 (0 cr) exa 0 | COST 0.14900 INR (llm 0.00758, tts 0.06400, stt 0.07742, search 0.00000)
+2026-11-01 20:59:01,026 | INFO    | voice-agent.wake | RESPONDING: STT off, listening for the stop word
+2026-11-01 20:59:04,394 | INFO    | voice-agent | latency | e2e 1615 ms | stt 0 | end-of-turn 251 | llm first token 847 | tts first byte 348 | search -
+2026-11-01 20:59:05,668 | INFO    | voice-agent.usage | reply #4 | llm 953 in (768 cached) / 48 out, tts 29 chars, stt 5.3 s (since last reply), search tavily 0 (0 cr) exa 0 | COST 0.11787 INR (llm 0.00538, tts 0.05800, stt 0.05449, search 0.00000)
+2026-11-01 20:59:05,876 | INFO    | voice-agent.wake | RESPONDING: STT off, listening for the stop word
+2026-11-01 20:59:08,894 | INFO    | voice-agent | latency | e2e 1456 ms | stt 0 | end-of-turn 251 | llm first token 866 | tts first byte 259 | search -
+2026-11-01 20:59:10,166 | INFO    | voice-agent.usage | reply #5 | llm 975 in (0 cached) / 35 out, tts 40 chars, stt 1.43 s (since last reply), search tavily 0 (0 cr) exa 0 | COST 0.10264 INR (llm 0.00794, tts 0.08000, stt 0.01470, search 0.00000)
+2026-11-01 20:59:10,347 | INFO    | voice-agent.wake | RESPONDING: STT off, listening for the stop word
+2026-11-01 20:59:13,994 | INFO    | voice-agent | latency | e2e 1886 ms | stt 0 | end-of-turn 251 | llm first token 1359 | tts first byte 243 | search -
+2026-11-01 20:59:15,268 | INFO    | voice-agent.usage | reply #6 | llm 994 in (0 cached) / 38 out, tts 30 chars, stt 1.4 s (since last reply), search tavily 0 (0 cr) exa 0 | COST 0.08255 INR (llm 0.00816, tts 0.06000, stt 0.01439, search 0.00000)
+2026-11-01 20:59:19,145 | INFO    | voice-agent.wake | ASLEEP (idle 5 s): STT off, waiting for 'Anima'
+2026-11-01 20:59:33,880 | INFO    | voice-agent.usage | session 20261101-205808 ended | 6 replies | [usage] session total: llm 5638 in / 274 out tokens, tts 196 chars (+336 filler pre-render), stt 24.8 s, tavily 0 credits, exa 0 requests, session length 85 s | SESSION COST 1.36 INR (llm 0.0452, tts 1.0640, stt 0.2549, search 0.0000)
+2026-11-01 20:59:33,881 | INFO    | voice-agent.usage | session 20261101-205808 cost | llm 0.04516 INR tts 1.06 INR stt 0.25489 INR search 0.00000 INR | TOTAL 1.36 INR | replies 0.65298 INR + fillers/unfinished turns 0.71107 INR
+2026-11-01 21:00:00,815 | INFO    | voice-agent | ==================== process 37824 started ====================
+2026-11-01 21:00:01,279 | WARNING | livekit.agents | no warmed process available for job, waiting for one to be created
+2026-11-01 21:00:02,515 | INFO    | voice-agent.wake | wake word ready: model hey_jarvis, threshold 0.50, hits 2, idle 5.0 s, grace 8.0 s | STT muted while replying: True (stop word: hey_jarvis, threshold 0.50, hits 2)
+2026-11-01 21:00:02,516 | WARNING | livekit.agents | LIVEKIT_INFERENCE_URL is set but LIVEKIT_API_KEY, LIVEKIT_API_SECRET missing; falling back to the turn-detector-v1-mini model
+2026-11-01 21:00:02,521 | INFO    | voice-agent.usage | session 20261101-210002 started | llm openai/gpt-oss-20b | tts bulbul:v4-flash | stt scribe_v2_realtime (elevenlabs) | report currency INR | prices file prices.ini
+2026-11-01 21:00:02,539 | WARNING | livekit.agents | metrics_collected is deprecated. Use session_usage_updated for usage tracking and ChatMessage.metrics for per-turn latency.
+2026-11-01 21:00:03,252 | WARNING | livekit.agents | event loop blocked for 651ms at "/Users/lakshitsingh/Code/Test/cli_ui.py", line 812, in _claim_stdin; synchronous work on the agent loop delays audio and turn handling, move it to a thread or an async client
+2026-11-01 21:00:10,829 | INFO    | voice-agent.wake | AWAKE (wake word, best score 1.00): STT on
+2026-11-01 21:00:11,593 | INFO    | voice-agent | fillers cached: {'en': 2, 'hi': 2, 'pa': 2}, long: {'en': 2, 'hi': 2, 'pa': 2}
+2026-11-01 21:00:14,635 | INFO    | voice-agent.wake | RESPONDING: STT off, listening for the stop word
+2026-11-01 21:00:15,307 | INFO    | voice-agent.usage | search request sent: tavily (1 credit)
+2026-11-01 21:00:15,309 | INFO    | voice-agent.usage | search request sent: exa
+2026-11-01 21:00:15,946 | INFO    | voice-agent.search | search[exa] 639 ms ok
+2026-11-01 21:00:21,257 | INFO    | voice-agent | latency | e2e 3159 ms | stt 0 | end-of-turn 251 | llm first token 980 | tts first byte 438 | search 641
+2026-11-01 21:00:22,531 | INFO    | voice-agent.usage | reply #1 | llm 2039 in (1536 cached) / 60 out, tts 63 chars, stt 6.33 s (since last reply), search tavily 1 (1 cr) exa 1 | COST 1.34 INR (llm 0.01068, tts 0.12600, stt 0.06508, search 1.13892)
+2026-11-01 21:00:25,879 | INFO    | voice-agent.wake | RESPONDING: STT off, listening for the stop word
+2026-11-01 21:00:26,395 | INFO    | voice-agent.usage | search request sent: tavily (1 credit)
+2026-11-01 21:00:26,398 | INFO    | voice-agent.usage | search request sent: exa
+2026-11-01 21:00:27,312 | INFO    | voice-agent.search | search[exa] 917 ms ok
+2026-11-01 21:00:30,443 | INFO    | voice-agent | latency | e2e 2601 ms | stt 0 | end-of-turn 250 | llm first token 531 | tts first byte 269 | search 922
+2026-11-01 21:00:31,715 | INFO    | voice-agent.usage | reply #2 | llm 2664 in (0 cached) / 61 out, tts 41 chars, stt 4.6 s (since last reply), search tavily 1 (1 cr) exa 1 | COST 1.29 INR (llm 0.02070, tts 0.08200, stt 0.04730, search 1.13892)
+2026-11-01 21:00:35,587 | INFO    | voice-agent.wake | ASLEEP (idle 5 s): STT off, waiting for 'Anima'
+2026-11-01 21:01:04,531 | INFO    | voice-agent.wake | AWAKE (wake word, best score 0.64): STT on
+2026-11-01 21:01:09,222 | INFO    | voice-agent.wake | RESPONDING: STT off, listening for the stop word
+2026-11-01 21:01:33,649 | INFO    | voice-agent | latency | e2e 1004 ms | stt 0 | end-of-turn 250 | llm first token 609 | tts first byte 258 | search -
+2026-11-01 21:01:34,917 | INFO    | voice-agent.usage | reply #3 | llm 1517 in (0 cached) / 147 out, tts 493 chars, stt 11.69 s (since last reply), search tavily 0 (0 cr) exa 0 | COST 1.12 INR (llm 0.01498, tts 0.98600, stt 0.12020, search 0.00000)
+2026-11-01 21:01:35,740 | INFO    | voice-agent.usage | session 20261101-210002 ended | 3 replies | [usage] session total: llm 6220 in / 268 out tokens, tts 597 chars (+336 filler pre-render), stt 22.6 s, tavily 2 credits, exa 2 requests, session length 93 s | SESSION COST 4.42 INR (llm 0.0464, tts 1.8660, stt 0.2326, search 2.2778)
+2026-11-01 21:01:35,742 | INFO    | voice-agent.usage | session 20261101-210002 cost | llm 0.04637 INR tts 1.87 INR stt 0.23258 INR search 2.28 INR | TOTAL 4.42 INR | replies 3.75 INR + fillers/unfinished turns 0.67200 INR

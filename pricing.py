@@ -128,8 +128,9 @@ class Prices:
                     ("input_per_million", "output_per_million"), "USD"),
                Item(f"tts:{m['tts']}", f"TTS model '{m['tts']}' (Sarvam)",
                     [("per_10k_chars", "price per 10,000 characters")], ("per_10k_chars",), "INR"),
-               Item(f"stt:{m['stt']}", f"STT model '{m['stt']}' (Sarvam)",
-                    [("per_hour", "price per hour of audio")], ("per_hour",), "INR")]
+               Item(f"stt:{m['stt']}", f"STT model '{m['stt']}' ({(m.get('stt_provider') or 'sarvam').capitalize()})",
+                    [("per_hour", "price per hour of audio")], ("per_hour",),
+                    "INR" if (m.get("stt_provider") or "sarvam") == "sarvam" else "USD")]
         if tavily:
             out.append(Item("search_tavily", "Tavily web search", [("per_credit", "price per credit")], ("per_credit",), "USD"))
         if exa:

@@ -70,10 +70,12 @@ class UsageMeter:
         self.session["prerender_tts_chars"] = 0.0      # filler clips rendered once at startup
         self.reply_cost = dict.fromkeys(COST_KEYS + ["total"], 0.0)   # sum of the per-reply costs
         self.replies = 0
+        self.external_stt = False                      # True: the wake gate reports the STT seconds it sends (any provider)
         self._ended = False
         self.started = time.monotonic()
-        log.info("session %s started | llm %s | tts %s | stt %s | report currency %s | prices file %s",
+        log.info("session %s started | llm %s | tts %s | stt %s (%s) | report currency %s | prices file %s",
                  self.session_id, self.models["llm"] or "?", self.models["tts"] or "?", self.models["stt"] or "?",
+                 self.models.get("stt_provider") or "?",
                  self.currency, self.prices.path)
         todo = self.prices.missing(tavily=bool(os.getenv("TAVILY_API_KEY")), exa=bool(os.getenv("EXA_API_KEY")))
         if todo:
@@ -113,7 +115,7 @@ class UsageMeter:
         elif kind == "TTSMetrics":
             self.add(tts_chars=getattr(m, "characters_count", 0),
                      tts_audio_s=getattr(m, "audio_duration", 0))
-        elif kind == "STTMetrics":
+        elif kind == "STTMetrics" and not self.external_stt:     # else the gate counts exactly what it sent
             self.add(stt_audio_s=getattr(m, "audio_duration", 0))
 
     # ---- money ------------------------------------------------------------

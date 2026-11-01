@@ -81,6 +81,7 @@ BADGES = {
     "thinking":  ("THINKING",    f"bold {C_INK} on {C_YELLOW}", C_YELLOW),
     "hearing":   ("HEARING YOU", f"bold {C_INK} on {C_GREEN}",  C_GREEN),
     "listening": ("LISTENING",   f"bold {C_INK} on {C_TEAL}",   C_TEAL),
+    "asleep":    ("ASLEEP",      f"bold {C_TEXT} on {C_DIM}",   C_DIM),
     "starting":  ("STARTING",    f"bold {C_TEXT} on {C_LINE}",  C_LINE),
     "stopping":  ("STOPPING",    f"bold {C_INK} on {C_ORANGE}", C_ORANGE),
 }
@@ -243,6 +244,7 @@ class VoiceUI:
                  on_mute: Optional[Callable[[bool], None]] = None,
                  on_language: Optional[Callable[[str], None]] = None,
                  on_interrupt: Optional[Callable[[], None]] = None, guard: str = "",
+                 on_wake: Optional[Callable[[], None]] = None, wake_name: str = "",
                  languages: Optional[list] = None, language: str = "auto") -> None:
         self.console: Console = Console()
         self.stt, self.llm, self.tts, self.voice = stt, llm, tts, voice
@@ -256,6 +258,9 @@ class VoiceUI:
         self.menu_open = False
         self.menu_idx = 0
         self.muted = False
+        self.on_wake = on_wake             # key W: wake / sleep by hand (only when a wake word is configured)
+        self.wake_name = wake_name         # "" = no wake word, the agent always listens
+        self.asleep = False                # True while the wake gate is closed (nothing goes to STT)
         self.quitting = False
         self.agent_state = "starting"      # LiveKit: initializing / idle / listening / thinking / speaking
         self.user_speaking = False
@@ -298,6 +303,8 @@ class VoiceUI:
             return "searching"
         if self.agent_state in ("speaking", "thinking"):
             return self.agent_state
+        if self.asleep:
+            return "asleep"
         if self.user_speaking:
             return "hearing"
         return "listening" if self.agent_state != "starting" else "starting"
@@ -307,6 +314,22 @@ class VoiceUI:
         if state in ("idle", "listening"):
             self.searching = ""            # safety net if a search was cancelled by a barge-in
         self.poke()
+
+    def set_awake(self, awake: bool, reason: str = "") -> None:
+        """Wake gate opened / closed (called from the agent's event loop)."""
+        self.asleep = not awake
+        if reason != "start":
+            self.notify(f"Awake: listening ({reason})" if awake else f"Asleep: say {self.wake_name} ({reason})",
+                        "ok" if awake else "info", chat=False)
+        self.poke()
+
+    def toggle_wake(self) -> None:
+        if not self.on_wake:
+            return
+        try:
+            self.on_wake()
+        except Exception as e:
+            self.notify(f"Wake failed: {e!r}", "error", chat=False)
 
     def set_user_state(self, state: str) -> None:
         self.user_speaking = state == "speaking"
@@ -470,6 +493,8 @@ class VoiceUI:
             self.open_menu()
         elif k in ("s", "esc"):
             self.interrupt()
+        elif k == "w":
+            self.toggle_wake()
         elif k.isdigit() and 1 <= int(k) <= len(self.langs):
             self.choose_language(self.langs[int(k) - 1][0])
         elif k in ("k", "up"):
@@ -493,6 +518,8 @@ class VoiceUI:
         label, style, accent = BADGES[key]
         if key == "searching":
             label = {"weather": "WEATHER"}.get(self.searching, "SEARCHING")
+        elif key == "asleep" and self.wake_name:
+            label = f"ASLEEP · SAY {self.wake_name.upper()}"
         left = Text.assemble((f" {label} ", style))
         if key in ACTIVE:
             left.append("  " + self._eq(), style=accent)
@@ -549,6 +576,9 @@ class VoiceUI:
         if self.muted:
             extra.append(Text(" ▌ MIC MUTED · nobody can hear you · press M to unmute ",
                               style=f"bold {C_TEXT} on {C_RED}"))
+        elif self.asleep and self.wake_name and not self.partial:
+            extra.append(Text(f" ▌ asleep · say \"{self.wake_name}\" (or press W) to wake me ",
+                              style=f"bold {C_TEXT} on {C_LINE}"))
         elif self.partial:
             extra.extend(block("", "YOU", f"bold {C_DIM} on {C_LINE}", self.partial + " …",
                                f"italic {C_SOFT}")[-2:])
@@ -632,7 +662,8 @@ class VoiceUI:
             parts = [_chip("↑↓", "move"), _chip("⏎", "pick"), _chip("1-%d" % len(self.langs), "quick"),
                      _chip("esc", "close")]
         else:
-            parts = [_chip("M", "unmute" if self.muted else "mute"), _chip("S", "stop talking"), _chip("L", "language"),
+            parts = [_chip("M", "unmute" if self.muted else "mute"), _chip("S", "stop talking"),
+                     *([_chip("W", "wake/sleep")] if self.on_wake else []), _chip("L", "language"),
                      _chip("1-%d" % len(self.langs), "quick lang"), _chip("J/K", "scroll"),
                      _chip("B", "latest"), _chip("Q", "quit")]
         t = Text(" ")
@@ -817,7 +848,7 @@ class VoiceUI:
         now = time.monotonic()
         anim = int(now * 8) if self.status in ACTIVE else 0
         toast_on = bool(self.toast and now < self.toast[2])
-        return (self.console.size, self.status, self.voice, self.muted, tuple(sorted(self.lat.items())),
+        return (self.console.size, self.status, self.voice, self.muted, self.asleep, tuple(sorted(self.lat.items())),
                 len(self.chat), len(self.log), self.partial, self.scroll, self.turns, int((now - self.started) // 60),
                 tuple(self.e2e_history[-1:]), u.get("time"), self.lang_mode, self.menu_open, self.menu_idx,
                 self.toast_id, toast_on, anim,
