@@ -20,7 +20,10 @@ Run, talking through your own mic and speakers. Use headphones: with open speake
 hears itself and interrupts itself.
     python Structure-II.py console
 
-Keys come from the same .env as the old demo (GROQ_API_KEY, SARVAM_API_KEY) plus:
+Settings: models, voices and timings are in settings.env; .env holds only the keys. Prices are in
+prices.ini, keyed by the model names from settings.env: a new model has no price, so the agent asks for it
+at startup (or run: python price_check.py) instead of reusing the old model's price.
+Keys (.env): GROQ_API_KEY, SARVAM_API_KEY, plus:
     TAVILY_API_KEY=tvly-...        # web search; without it the agent says search is unavailable
     EXA_API_KEY=...                # optional: second provider, raced against Tavily (first answer wins)
 Optional tuning (defaults shown):
@@ -31,7 +34,7 @@ Optional tuning (defaults shown):
     REPLY_LANG=auto                # auto = answer in the language you speak; hi / pa / en = always answer in that
                                    # language. Changeable while running: L key in the dashboard, or just ask
                                    # ("talk to me in Punjabi", "हिंदी में बोलो", ...): the model calls set_language.
-    ECHO_GUARD=gate                # stops the agent from hearing itself on open speakers:
+    ECHO_GUARD=filter              # (default is now filter) stops the agent from hearing itself on open speakers:
                                    #   gate   = mic closed while it speaks (no voice barge-in; press S to stop it)
                                    #   filter = mic stays open (voice barge-in), but turns that repeat its own words are dropped
                                    #   off    = nothing (use headphones)
@@ -51,16 +54,22 @@ Search tuning (defaults shown):
     LONG_WAIT_S=2.0                # second "still looking" filler after this many seconds
     KEEPALIVE_S=40                 # how often the search connections are touched to stay warm
     DEFAULT_CITY=Ludhiana          # used by get_weather when the user names no city
-New: LLM_TIMEOUT_S=4 (per LLM attempt), LOCAL_VAD=0|1, PREEMPTIVE=1|0.
+New: LLM_TIMEOUT_S=4 (per LLM attempt), LOCAL_VAD=0|1 (default OFF), PREEMPTIVE=1|0,
+INTERRUPT_MIN_WORDS=1, INTERRUPT_MIN_DURATION_S=0.5, FALSE_INTERRUPT_S=1.3.
 Existing variables still honoured: GROQ_LLM_MODEL, MAX_REPLY_TOKENS, TTS_MODEL, SPEAKER_HI,
 SPEAKER_EN, SPEAKER_PA, SARVAM_RT_LANGUAGE, SARVAM_RT_STREAM_TYPE, SARVAM_RT_TASK.
 
 Timings go to latency_log_livekit.csv (new file, different columns from latency_log.csv).
+
+Money: put your prices in prices.ini (every provider used is listed there). After every reply the cost
+is printed and appended to cost_log.csv; when the session ends its total cost is written too.
+Everything is also appended to agent.log (never truncated). Report on history: python cost_report.py
 """
 import asyncio
 import collections
 import csv
 import difflib
+import inspect
 import logging
 import os
 import random
@@ -84,6 +93,7 @@ from livekit.agents import (
     TurnHandlingOptions,
     cli,
     function_tool,
+    inference,
 )
 from livekit.agents.voice.agent_session import SessionConnectOptions
 try:
@@ -94,11 +104,15 @@ from livekit.plugins import groq, sarvam
 
 from search_providers import Prefetcher, Search, Weather
 from usage_meter import UsageMeter
+from agent_logging import setup_logging
+from settings import get_models, load_settings
 
-load_dotenv()
+load_settings()                 # settings.env: models, voices, timings (no secrets)
+load_dotenv()                   # .env: API keys only
 load_dotenv(".env.local")
 
 logger = logging.getLogger("voice-agent")
+setup_logging()                 # agent.log: append-only log of everything (LOG_FILE / LOG_LEVEL to change)
 
 
 def env(key, default=""):
@@ -106,16 +120,19 @@ def env(key, default=""):
 
 
 # ---------- config (same names as env.example where they exist) ----------
-LLM_MODEL = env("GROQ_LLM_MODEL", "qwen/qwen3.8-27b")
+MODELS = get_models()           # the model names; the price calculator reads the same ones
+LLM_MODEL = MODELS["llm"]
 MAX_REPLY_TOKENS = int(env("MAX_REPLY_TOKENS", "500"))       # Hindi/Punjabi text costs many tokens per character
-TTS_MODEL = env("TTS_MODEL", "bulbul:v4-flash")
+TTS_MODEL = MODELS["tts"]
+STT_MODEL = MODELS["stt"]
+REASONING_EFFORT = env("GROQ_REASONING_EFFORT", "low")
 STT_LANGUAGE = env("SARVAM_RT_LANGUAGE", "auto")          # auto, hi-IN, pa-IN, en-IN
 STT_STREAM_TYPE = env("SARVAM_RT_STREAM_TYPE", "fast")    # fast | balanced | simulated
 STT_TASK = env("SARVAM_RT_TASK", "transcribe")            # transcribe | codemix | translate ...
 VAD_SILENCE_MS = int(env("SARVAM_VAD_SILENCE_MS", "300"))
 VAD_THRESHOLD = float(env("SARVAM_VAD_THRESHOLD", "0.5"))
 VAD_MIN_SPEECH_MS = int(env("SARVAM_VAD_MIN_SPEECH_MS", "80"))
-ECHO_GUARD = env("ECHO_GUARD", "gate").lower()
+ECHO_GUARD = env("ECHO_GUARD", "filter").lower()
 if ECHO_GUARD not in ("gate", "filter", "off"):
     ECHO_GUARD = "gate"
 ECHO_TAIL_S = float(env("ECHO_TAIL_S", "0.6"))
@@ -136,7 +153,10 @@ LONG_WAIT_S = float(env("LONG_WAIT_S", "2.0"))
 KEEPALIVE_S = float(env("KEEPALIVE_S", "40"))
 DEFAULT_CITY = env("DEFAULT_CITY", "Ludhiana")
 LLM_TIMEOUT_S = float(env("LLM_TIMEOUT_S", "4.0"))
-LOCAL_VAD = env("LOCAL_VAD", "0") == "1"
+LOCAL_VAD = env("LOCAL_VAD", "0") == "1"                     # OFF = your old behaviour (interrupt on a transcribed word). 1 = bundled Silero VAD: faster, but can react to echo
+INTERRUPT_MIN_WORDS = int(env("INTERRUPT_MIN_WORDS", "1"))   # real words needed to interrupt (as in your old file); 0 only with LOCAL_VAD=1
+INTERRUPT_MIN_DURATION_S = float(env("INTERRUPT_MIN_DURATION_S", "0.5"))   # speech length that counts as a barge-in
+FALSE_INTERRUPT_S = float(env("FALSE_INTERRUPT_S", "1.3"))   # noise only: resume talking after this much silence
 PREEMPTIVE = env("PREEMPTIVE", "1") != "0"
 SEARCH_FAILED_MSG = "The search failed or timed out. Tell the user in a few words that you could not check right now."
 TTS_RATE = 24000
@@ -393,7 +413,7 @@ class VoiceAgent(Agent):
         self.fillers_long: dict[str, list[tuple[str, rtc.AudioFrame]]] = {}
         self.last_search_ms = None
         self.ui = None                      # set in entrypoint when the dashboard is on
-        self.meter = UsageMeter(USAGE_CSV, LLM_MODEL)
+        self.meter = UsageMeter(USAGE_CSV, MODELS)
         self.search = Search(on_call=self.meter.search_call, tavily_key=TAVILY_KEY, exa_key=EXA_KEY, timeout=SEARCH_TIMEOUT_S,
                              max_results=SEARCH_MAX_RESULTS, snippet_chars=SEARCH_SNIPPET_CHARS,
                              tavily_depth=TAVILY_DEPTH, hedge_same_s=HEDGE_SAME_S)
@@ -508,7 +528,9 @@ class VoiceAgent(Agent):
             yield joined
 
     async def aclose(self) -> None:
-        print(self.meter.session_summary())
+        summary = self.meter.end_session()      # writes the session row to cost_log.csv + agent.log
+        if summary:
+            print(summary)
         for t in self._bg:
             t.cancel()
         await self.search.aclose()
@@ -693,7 +715,17 @@ class VoiceAgent(Agent):
 
 def make_components():
     """Build STT, LLM and TTS. Bad parameters raise here, so test this without a mic."""
+    stt_extra = {}
+    try:        # pass the STT model only if this version of the plugin takes one (it is also what gets priced)
+        if "model" in inspect.signature(sarvam.STTRealtime).parameters:
+            stt_extra["model"] = STT_MODEL
+        else:
+            logger.warning("sarvam.STTRealtime has no model parameter: the plugin default is used; "
+                           "STT_MODEL=%s is only used for the price lookup", STT_MODEL)
+    except (TypeError, ValueError):
+        pass
     stt = sarvam.STTRealtime(
+        **stt_extra,
         language=STT_LANGUAGE,
         stream_type=STT_STREAM_TYPE,
         mode=STT_TASK,
@@ -705,7 +737,7 @@ def make_components():
     )
     llm_kwargs = {}
     if "gpt-oss" in LLM_MODEL:
-        llm_kwargs["reasoning_effort"] = "low"
+        llm_kwargs["reasoning_effort"] = REASONING_EFFORT
     elif "qwen" in LLM_MODEL:
         llm_kwargs["reasoning_effort"] = "none"       # instruct mode: no thinking tokens
     llm = groq.LLM(model=LLM_MODEL, temperature=0.7, max_completion_tokens=MAX_REPLY_TOKENS,
@@ -733,9 +765,10 @@ def make_session(stt, llm, tts, vad=None) -> AgentSession:
             endpointing={"mode": "fixed", "min_delay": MIN_DELAY_S, "max_delay": 2.0},
             interruption={
                 "enabled": True,
-                "mode": "vad",            # needs a local VAD to be fast: set LOCAL_VAD=1 (without it barge-in waits for transcripts)
-                "min_words": 1,           # real words only, so coughs and clicks don't interrupt
-                "false_interruption_timeout": 1.3,
+                "mode": "vad",            # with LOCAL_VAD=0 the transcript triggers barge-in (old behaviour)
+                "min_duration": INTERRUPT_MIN_DURATION_S,
+                "min_words": INTERRUPT_MIN_WORDS,   # 1 = a real transcribed word must arrive, so quiet echo / clicks do not interrupt
+                "false_interruption_timeout": FALSE_INTERRUPT_S,
                 "resume_false_interruption": True,
             },
             preemptive_generation={"enabled": PREEMPTIVE},
@@ -936,6 +969,8 @@ def attach_logging(session: AgentSession, agent: VoiceAgent, tts, ui=None) -> No
             print(f"  reply    : {item.text_content}")
             print(f"  e2e {row[6]} ms  (stt {row[2]}, end-of-turn {row[3]}, llm first token {row[4]}, "
                   f"tts first byte {row[5]}, search {row[8] or '-'})")
+        logger.info("latency | e2e %s ms | stt %s | end-of-turn %s | llm first token %s | tts first byte %s | search %s",
+                    row[6], row[2], row[3], row[4], row[5], row[8] or "-")
         agent.last_search_ms = None
         spawn(flush_usage(agent, ui, item.text_content or ""), "usage")
         new = not os.path.exists(CSV_PATH)
@@ -955,6 +990,7 @@ server = AgentServer()
 
 @server.rtc_session()
 async def entrypoint(ctx: JobContext) -> None:
+    setup_logging()                       # again: LiveKit may have reset logging when the job started
     stt, llm, tts = make_components()
     try:
         tts.prewarm()                     # open the TTS socket now, not on the first reply
@@ -963,10 +999,9 @@ async def entrypoint(ctx: JobContext) -> None:
     vad = None
     if LOCAL_VAD:
         try:
-            from livekit.plugins import silero
-            vad = silero.VAD.load()
+            vad = inference.VAD()         # same VAD as the starter template; runs locally
         except Exception as e:
-            logger.warning("LOCAL_VAD=1 but silero is not available (%r); running without a local VAD", e)
+            logger.warning("local VAD unavailable (%r): voice interruption will be slow", e)
     session = make_session(stt, llm, tts, vad)
     agent = VoiceAgent()
     agent.tts_engine = tts
@@ -1001,4 +1036,7 @@ async def entrypoint(ctx: JobContext) -> None:
 
 
 if __name__ == "__main__":
+    if sys.argv[1:2] in (["console"], ["dev"], ["start"], ["connect"]):
+        from price_check import ensure_prices
+        ensure_prices()                  # asks for the price of any model in settings.env that has none yet
     cli.run_app(server)

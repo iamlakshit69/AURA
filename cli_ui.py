@@ -610,6 +610,8 @@ class VoiceUI:
             use.add_row(" tts", f"{_fmt(u['tts_chars'])} chars" + (" (est.)" if u.get("tts_estimated") else ""))
             if u["tavily_requests"] or u["exa_requests"]:
                 use.add_row(" search", Text(f"{_fmt(u['tavily_requests'] + u['exa_requests'])} calls", style=C_PURPLE))
+            if u.get("cost") and self.meter:
+                use.add_row(" cost", Text(self.meter.cost_text(u["cost"]), style=C_PURPLE))
         else:
             use.add_row(" ", Text("nothing yet", style=C_DIM))
         if s:
@@ -619,6 +621,7 @@ class VoiceUI:
             use.add_row(" tts", f"{_fmt(s['tts_chars'])} chars")
             use.add_row(" stt", f"{s['stt_audio_s']:.0f} s")
             use.add_row(" search", f"{_fmt(s['tavily_credits'])} tavily / {_fmt(s['exa_requests'])} exa")
+            use.add_row(" cost", Text(self.meter.cost_text(self.meter.session_cost()), style=f"bold {C_PURPLE}"))
         rows.append(use)
         return Group(*rows)
 
@@ -819,7 +822,8 @@ class VoiceUI:
                 tuple(self.e2e_history[-1:]), u.get("time"), self.lang_mode, self.menu_open, self.menu_idx,
                 self.toast_id, toast_on, anim,
                 m.get("llm_prompt_tokens"), m.get("llm_completion_tokens"), m.get("tts_chars"),
-                round(m.get("stt_audio_s", 0)), m.get("tavily_credits"), m.get("exa_requests"))
+                round(m.get("stt_audio_s", 0)), m.get("tavily_credits"), m.get("exa_requests"),
+                self.meter.cost_text(self.meter.session_cost()) if self.meter else "")
 
     def _tick_loop(self) -> None:
         fps = max(float(os.getenv("UI_FPS", "8")), 0.5)

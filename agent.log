@@ -1,0 +1,116 @@
+2026-11-01 18:35:29,616 | INFO    | voice-agent | ==================== process 35108 started ====================
+2026-11-01 18:35:30,009 | WARNING | livekit.agents | no warmed process available for job, waiting for one to be created
+2026-11-01 18:35:30,216 | WARNING | voice-agent | sarvam.STTRealtime has no model parameter: the plugin default is used; STT_MODEL=saaras:v3-realtime is only used for the price lookup
+2026-11-01 18:35:30,217 | WARNING | livekit.agents | LIVEKIT_INFERENCE_URL is set but LIVEKIT_API_KEY, LIVEKIT_API_SECRET missing; falling back to the turn-detector-v1-mini model
+2026-11-01 18:35:30,221 | INFO    | voice-agent.usage | session 20261101-183530 started | llm openai/gpt-oss-20b | tts bulbul:v4-flash | stt saaras:v3-realtime | report currency INR | prices file prices.ini
+2026-11-01 18:35:30,244 | WARNING | livekit.agents | metrics_collected is deprecated. Use session_usage_updated for usage tracking and ChatMessage.metrics for per-turn latency.
+2026-11-01 18:35:35,019 | WARNING | livekit.agents | event loop blocked for 4736ms at "/Users/lakshitsingh/Code/Test/cli_ui.py", line 781, in _claim_stdin; synchronous work on the agent loop delays audio and turn handling, move it to a thread or an async client
+2026-11-01 18:35:35,280 | ERROR   | livekit.plugins.sarvam.log | Failed to connect to Sarvam realtime STT WebSocket
+Traceback (most recent call last):
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/tasks.py", line 488, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/aiohttp/client.py", line 1312, in _ws_connect
+    resp = await self.request(
+           ^^^^^^^^^^^^^^^^^^^
+    ...<11 lines>...
+    )
+    ^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/aiohttp/client.py", line 900, in _request
+    resp = await handler(req)
+           ^^^^^^^^^^^^^^^^^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/aiohttp/client.py", line 878, in _connect_and_send_request
+    await resp.start(conn)
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/aiohttp/client_reqrep.py", line 745, in start
+    message, payload = await protocol.read()  # type: ignore[union-attr]
+                       ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/aiohttp/streams.py", line 716, in read
+    await self._waiter
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/plugins/sarvam/stt_streaming.py", line 899, in _connect_ws
+    ws = await asyncio.wait_for(
+         ^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/tasks.py", line 487, in wait_for
+    async with timeouts.timeout(timeout):
+               ~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/timeouts.py", line 114, in __aexit__
+    raise TimeoutError from exc_val
+TimeoutError
+2026-11-01 18:35:35,299 | WARNING | livekit.agents | STT stream ended on an unrecoverable error, recreating
+Traceback (most recent call last):
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/tasks.py", line 488, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/aiohttp/client.py", line 1312, in _ws_connect
+    resp = await self.request(
+           ^^^^^^^^^^^^^^^^^^^
+    ...<11 lines>...
+    )
+    ^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/aiohttp/client.py", line 900, in _request
+    resp = await handler(req)
+           ^^^^^^^^^^^^^^^^^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/aiohttp/client.py", line 878, in _connect_and_send_request
+    await resp.start(conn)
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/aiohttp/client_reqrep.py", line 745, in start
+    message, payload = await protocol.read()  # type: ignore[union-attr]
+                       ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/aiohttp/streams.py", line 716, in read
+    await self._waiter
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/plugins/sarvam/stt_streaming.py", line 786, in _run
+    ws = await self._connect_ws()
+         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/plugins/sarvam/stt_streaming.py", line 899, in _connect_ws
+    ws = await asyncio.wait_for(
+         ^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )
+    ^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/tasks.py", line 487, in wait_for
+    async with timeouts.timeout(timeout):
+               ~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.4/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/timeouts.py", line 114, in __aexit__
+    raise TimeoutError from exc_val
+TimeoutError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/agents/voice/audio_recognition.py", line 245, in _stt_pump
+    async for ev in node:
+    ...<3 lines>...
+        self._event_ch.send_nowait(ev)
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/agents/voice/agent.py", line 561, in stt_node
+    async for event in stream:
+        yield event
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/agents/stt/stt.py", line 623, in __anext__
+    raise exc  # noqa: B904
+    ^^^^^^^^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/agents/stt/stt.py", line 487, in _main_task
+    return await self._run()
+           ^^^^^^^^^^^^^^^^^
+  File "/Users/lakshitsingh/Code/Test/venv/lib/python3.14/site-packages/livekit/plugins/sarvam/stt_streaming.py", line 797, in _run
+    raise APITimeoutError("Timed out connecting to Sarvam realtime STT") from e
+livekit.agents._exceptions.APITimeoutError: Timed out connecting to Sarvam realtime STT (caused by CancelledError)
+2026-11-01 18:35:43,139 | INFO    | voice-agent | fillers cached: {'en': 2, 'hi': 2, 'pa': 2}, long: {'en': 2, 'hi': 2, 'pa': 2}
+2026-11-01 18:35:51,018 | INFO    | voice-agent | latency | e2e 1444 ms | stt 397 | end-of-turn 399 | llm first token 526 | tts first byte 473 | search -
+2026-11-01 18:35:52,235 | INFO    | voice-agent.usage | usage_log.csv: added new columns, 60 old rows kept
+2026-11-01 18:35:52,238 | INFO    | voice-agent.usage | reply #1 | llm 830 in (0 cached) / 40 out, tts 54 chars, stt 15.6 s (since last reply), search tavily 0 (0 cr) exa 0 | COST 0.24245 INR (llm 0.00705, tts 0.10800, stt 0.12740, search 0.00000)
+2026-11-01 18:36:04,916 | INFO    | voice-agent | latency | e2e 1744 ms | stt 395 | end-of-turn 397 | llm first token 387 | tts first byte 255 | search -
+2026-11-01 18:36:06,129 | INFO    | voice-agent.usage | reply #2 | llm 1756 in (0 cached) / 67 out, tts 60 chars, stt 15.2 s (since last reply), search tavily 0 (0 cr) exa 0 | COST 0.25854 INR (llm 0.01441, tts 0.12000, stt 0.12413, search 0.00000)
+2026-11-01 18:36:28,915 | INFO    | voice-agent | latency | e2e 4543 ms | stt 433 | end-of-turn 434 | llm first token 547 | tts first byte 262 | search 1533
+2026-11-01 18:36:30,129 | INFO    | voice-agent.usage | reply #3 | llm 1965 in (0 cached) / 115 out, tts 158 chars, stt 20.25 s (since last reply), search tavily 0 (0 cr) exa 0 | COST 0.49864 INR (llm 0.01726, tts 0.31600, stt 0.16537, search 0.00000)
+2026-11-01 18:37:15,252 | INFO    | voice-agent.usage | session 20261101-183530 ended | 3 replies | [usage] session total: llm 4551 in / 222 out tokens, tts 272 chars (+336 filler pre-render), stt 96.4 s, tavily 0 credits, exa 0 requests, session length 105 s | SESSION COST 2.04 INR (llm 0.0387, tts 1.2160, stt 0.7873, search 0.0000)
+2026-11-01 18:37:15,254 | INFO    | voice-agent.usage | session 20261101-183530 cost | llm 0.03872 INR tts 1.22 INR stt 0.78727 INR search 0.00000 INR | TOTAL 2.04 INR | replies 0.99962 INR + fillers/unfinished turns 1.04 INR

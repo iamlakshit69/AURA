@@ -1,63 +1,90 @@
 #!/usr/bin/env python3
 """
-Turn usage_log.csv into money.   python cost_report.py [usage_log.csv]
+Price your usage history.   python cost_report.py [usage_log.csv] [--since 2026-11-01]
 
-Fill in PRICES from each provider's pricing page (they change, so they are not hard-coded in the
-agent). All prices in the same currency. Writes usage_costs.csv with a cost column per reply.
+Prices come from prices.ini, found by the model names (settings.env; older rows: the model recorded in the log). This RE-PRICES the raw usage in usage_log.csv
+with the prices in prices.ini today, so you can ask "what would all of this cost at the new prices?".
+Writes usage_costs.csv with a cost column per reply.
+
+The prices that were valid at the time are in cost_log.csv (written live by the agent): its
+kind=session rows are the exact total of every session, filler clips included. They are listed below
+when the file exists.
 """
+import argparse
 import csv
-import sys
+import os
+from collections import defaultdict
 
-PRICES = {
-    "llm_input_per_m":      0.0,   # per 1M prompt tokens (non-cached)
-    "llm_cached_input_per_m": 0.0, # per 1M cached prompt tokens (often a discount; same as input if none)
-    "llm_output_per_m":     0.0,   # per 1M completion tokens
-    "tts_per_10k_chars":    0.0,   # Sarvam Bulbul, per 10,000 characters
-    "stt_per_hour":         0.0,   # Sarvam STT, per hour of audio
-    "tavily_per_credit":    0.0,
-    "exa_per_request":      0.0,
-}
+from pricing import COST_KEYS, Prices, num
+from settings import get_models, load_settings
 
-path = sys.argv[1] if len(sys.argv) > 1 else "usage_log.csv"
-rows = list(csv.DictReader(open(path, newline="")))
+load_settings()
+CURRENT = get_models()
+
+ap = argparse.ArgumentParser()
+ap.add_argument("log", nargs="?", default="usage_log.csv")
+ap.add_argument("--since", default="", help="only rows from this date on, e.g. 2026-11-01")
+ap.add_argument("--prices", default=os.getenv("PRICES_FILE", "prices.ini"))
+ap.add_argument("--cost-log", default=os.getenv("COST_CSV", "cost_log.csv"))
+args = ap.parse_args()
+
+prices = Prices(args.prices, CURRENT)
+cur = prices.currency
+with open(args.log, newline="", encoding="utf-8-sig") as fh:
+    rows = [r for r in csv.DictReader(fh) if r.get("time", "") >= args.since]
 if not rows:
     raise SystemExit("no rows yet")
-if not any(PRICES.values()):
-    print("NOTE: PRICES are all 0, so only usage is shown. Fill them in at the top of this file.\n")
+no_model = sum(1 for r in rows if not r.get("tts_model"))
+if no_model:
+    print(f"NOTE: {no_model} older rows do not record the TTS/STT model: they are priced with the models in settings.env "
+          f"({CURRENT['tts']}, {CURRENT['stt']}).\n")
 
-def f(r, k): return float(r[k] or 0)
-
-def cost(r):
-    cached = f(r, "llm_cached_tokens")
-    fresh = max(f(r, "llm_prompt_tokens") - cached, 0)
-    parts = {
-        "llm":    (fresh * PRICES["llm_input_per_m"] + cached * PRICES["llm_cached_input_per_m"]
-                   + f(r, "llm_completion_tokens") * PRICES["llm_output_per_m"]) / 1e6,
-        "tts":    f(r, "tts_chars") / 1e4 * PRICES["tts_per_10k_chars"],
-        "stt":    f(r, "stt_audio_s") / 3600 * PRICES["stt_per_hour"],
-        "search": f(r, "tavily_credits") * PRICES["tavily_per_credit"] + f(r, "exa_requests") * PRICES["exa_per_request"],
-    }
-    parts["total"] = sum(parts.values())
-    return parts
-
-out, tot = [], {"llm": 0.0, "tts": 0.0, "stt": 0.0, "search": 0.0, "total": 0.0}
+out, tot, by_model = [], dict.fromkeys(COST_KEYS + ["total"], 0.0), defaultdict(lambda: dict.fromkeys(COST_KEYS + ["total"], 0.0))
+usage = defaultdict(float)
+unpriced = defaultdict(int)
 for r in rows:
-    c = cost(r)
-    for k in tot: tot[k] += c[k]
-    out.append({**r, **{f"cost_{k}": round(v, 6) for k, v in c.items()}})
+    c = prices.cost(r, {"llm": r.get("llm", ""), "tts": r.get("tts_model", ""), "stt": r.get("stt_model", "")})
+    for u in c["unpriced"]:
+        unpriced[u] += 1
+    for k in tot:
+        tot[k] += c[k]
+        by_model[r.get("llm", "?")][k] += c[k]
+    for k, v in r.items():
+        if k not in ("time", "llm", "tts_model", "stt_model"):
+            usage[k] += num(v)
+    out.append({**r, **{f"cost_{k}": round(c[k], 6) for k in COST_KEYS + ["total"]}, "currency": cur,
+                "unpriced": ";".join(c["unpriced"])})
 with open("usage_costs.csv", "w", newline="") as fh:
-    w = csv.DictWriter(fh, fieldnames=list(out[0])); w.writeheader(); w.writerows(out)
+    w = csv.DictWriter(fh, fieldnames=list(out[0]))
+    w.writeheader()
+    w.writerows(out)
 
 n = len(rows)
-sums = {k: sum(f(r, k) for r in rows) for k in rows[0] if k not in ("time", "llm")}
-print(f"{n} replies")
-print(f"  LLM   {sums['llm_prompt_tokens']:.0f} in ({sums['llm_cached_tokens']:.0f} cached) / {sums['llm_completion_tokens']:.0f} out tokens"
-      f"  -> {sums['llm_prompt_tokens']/n:.0f} in, {sums['llm_completion_tokens']/n:.0f} out per reply")
-print(f"  TTS   {sums['tts_chars']:.0f} chars  -> {sums['tts_chars']/n:.0f} per reply")
-print(f"  STT   {sums['stt_audio_s']:.1f} s audio  -> {sums['stt_audio_s']/n:.1f} s per reply (average only: per-row STT is lumpy)")
-if sums.get("tts_estimated"):
-    print(f"  note: {sums['tts_estimated']:.0f} reply(ies) had no TTS metrics, their tts_chars is the reply length")
-print(f"  Search tavily {sums['tavily_credits']:.0f} credits / exa {sums['exa_requests']:.0f} requests")
-print(f"\nCost  total {tot['total']:.4f}   per reply {tot['total']/n:.5f}")
-print("      " + "  ".join(f"{k} {v:.4f}" for k, v in tot.items() if k != "total"))
-print("\nper-reply costs written to usage_costs.csv")
+print(f"{n} replies from {rows[0]['time']} to {rows[-1]['time']}")
+print(f"  LLM    {usage['llm_prompt_tokens']:.0f} in ({usage['llm_cached_tokens']:.0f} cached) / {usage['llm_completion_tokens']:.0f} out tokens"
+      f"  -> {usage['llm_prompt_tokens']/n:.0f} in, {usage['llm_completion_tokens']/n:.0f} out per reply")
+print(f"  TTS    {usage['tts_chars']:.0f} chars  -> {usage['tts_chars']/n:.0f} per reply (filler pre-render not in this log)")
+print(f"  STT    {usage['stt_audio_s']:.1f} s audio  -> {usage['stt_audio_s']/n:.1f} s per reply (per-row STT is lumpy; the total is right)")
+print(f"  Search tavily {usage['tavily_credits']:.0f} credits / exa {usage['exa_requests']:.0f} requests / weather {usage['weather_calls']:.0f} calls")
+if usage.get("tts_estimated"):
+    print(f"  note: {usage['tts_estimated']:.0f} reply(ies) had no TTS metrics, their tts_chars is the reply length")
+print(f"\nCost at today's prices ({cur})   total {tot['total']:.4f}   per reply {tot['total']/n:.5f}")
+print("      " + "   ".join(f"{k} {tot[k]:.4f}" for k in COST_KEYS))
+if len(by_model) > 1:
+    for m, t in by_model.items():
+        print(f"      {m}: {t['total']:.4f}")
+if unpriced:
+    print("  UNPRICED (no price in prices.ini, counted as 0): "
+          + ", ".join(f"{k} in {v} replies" for k, v in unpriced.items()) + "   -> python price_check.py --edit")
+print("per-reply costs written to usage_costs.csv")
+
+if os.path.exists(args.cost_log):
+    with open(args.cost_log, newline="", encoding="utf-8-sig") as fh:
+        sessions = [r for r in csv.DictReader(fh) if r.get("kind") == "session" and r.get("time", "") >= args.since]
+    if sessions:
+        print(f"\nSessions in {args.cost_log} (prices valid at that time):")
+        print(f"  {'session':<17} {'replies':>7} {'total':>12}  {'llm':>10} {'tts':>10} {'stt':>10} {'search':>10}")
+        for s in sessions:
+            print(f"  {s['session_id']:<17} {s['replies']:>7} {num(s['cost_total']):>8.4f} {s['currency']:<3}"
+                  f"  {num(s['cost_llm']):>10.4f} {num(s['cost_tts']):>10.4f} {num(s['cost_stt']):>10.4f} {num(s['cost_search']):>10.4f}")
+        print(f"  {'ALL':<17} {sum(num(s['replies']) for s in sessions):>7.0f} {sum(num(s['cost_total']) for s in sessions):>8.4f}")
