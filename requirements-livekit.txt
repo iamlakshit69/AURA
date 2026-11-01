@@ -1,0 +1,3 @@
+livekit-agents[sarvam,groq]>=1.8.6,<2
+httpx
+python-dotenv
