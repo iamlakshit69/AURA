@@ -1,3 +1,6 @@
 livekit-agents[sarvam,groq]>=1.8.6,<2
 httpx
 python-dotenv
+rich
+# optional, for LOCAL_VAD=1 (faster barge-in):
+# livekit-plugins-silero
