@@ -126,7 +126,7 @@ class Prices:
         m = {**self.models, **{k: v for k, v in (models or {}).items() if v}}
         out = [Item(f"llm:{m['llm']}", f"LLM model '{m['llm']}' (Groq)", LLM_FIELDS,
                     ("input_per_million", "output_per_million"), "USD"),
-               Item(f"tts:{m['tts']}", f"TTS model '{m['tts']}' (Sarvam)",
+               Item(f"tts:{m['tts']}", f"TTS model '{m['tts']}' ({(m.get('tts_provider') or 'sarvam').capitalize()})",
                     [("per_10k_chars", "price per 10,000 characters")], ("per_10k_chars",), "INR"),
                Item(f"stt:{m['stt']}", f"STT model '{m['stt']}' ({(m.get('stt_provider') or 'sarvam').capitalize()})",
                     [("per_hour", "price per hour of audio")], ("per_hour",),

@@ -11,6 +11,11 @@ Wake word + stop word gate for the voice agent (openWakeWord).
     reply ends              -> LISTENING, with a WAKE_IDLE_S window. No speech in it: ASLEEP again.
     wake word, then silence -> ASLEEP after WAKE_GRACE_S.
 
+The wake word is NOT sent to STT (so it never reaches the LLM): WAKE_PREROLL_S=0 means STT only gets audio from the
+moment of detection on. A short chime plays after the wake word and after the stop word (WAKE_CHIME=0 to turn off).
+It is played locally with sounddevice, not through the agent's speech pipeline, so it never counts as a reply.
+STT audio is held back for the length of the chime so the chime itself is not transcribed.
+
 STT_MUTE_WHILE_REPLYING=0 turns RESPONDING off: STT stays on during replies (the old behaviour).
 
 The gate sits in Agent.stt_node. Voice barge-in is gone while STT is muted, so the session must run with
@@ -25,6 +30,8 @@ import asyncio
 import collections
 import logging
 import os
+import threading
+import time
 from typing import AsyncIterable, Callable, Optional
 
 import numpy as np
@@ -34,6 +41,18 @@ log = logging.getLogger("voice-agent.wake")
 
 OWW_RATE = 16000          # openWakeWord only understands 16 kHz mono int16
 CHUNK = 1280              # 80 ms: the chunk size openWakeWord is built for
+
+
+CHIME_RATE = 24000
+
+
+def _tone(freqs: list, seconds: float, volume: float) -> np.ndarray:
+    """A short soft beep sequence (one note per frequency) with a quick fade in/out, as int16."""
+    n = int(CHIME_RATE * seconds / len(freqs))
+    t = np.arange(n) / CHIME_RATE
+    env = np.minimum(1.0, np.minimum(t / 0.008, (t[-1] - t) / 0.03))
+    wave = np.concatenate([np.sin(2 * np.pi * f * t) * env for f in freqs])
+    return (wave * volume * 32767).astype(np.int16)
 
 
 def load_model(model: str, vad_threshold: float = 0.5):
@@ -63,7 +82,9 @@ class WakeGate:
                  vad_threshold: float = 0.5, on_change: Optional[Callable[[bool, str], None]] = None,
                  mute_while_replying: bool = True, stop_model: Optional[str] = None,
                  stop_threshold: Optional[float] = None, stop_hits: Optional[int] = None,
-                 on_billed: Optional[Callable[[float], None]] = None) -> None:
+                 on_billed: Optional[Callable[[float], None]] = None, chime: bool = False,
+                 chime_volume: float = 0.25, chime_hold_s: Optional[float] = None,
+                 stop_raw_mic: bool = False) -> None:
         self.oww, self.label = load_model(model, vad_threshold)
         self.name = name
         self.threshold, self.idle_s, self.grace_s, self.preroll_s = threshold, idle_s, grace_s, preroll_s
@@ -76,11 +97,28 @@ class WakeGate:
         if mute_while_replying and stop_model and stop_model != model:
             self.stop_oww, self.stop_label = load_model(stop_model, vad_threshold)
         self.on_change = on_change
+        self._sd = None
+        self._chimes: dict = {}
+        self._hold_s = 0.0
+        self._hold_until = 0.0                        # STT audio is dropped until then (the chime itself)
+        if chime:
+            try:
+                import sounddevice as sd
+                self._sd = sd
+                self._chimes = {"wake": _tone([784, 1175], 0.17, chime_volume),    # rising: I am listening
+                                "stop": _tone([880, 587], 0.15, chime_volume)}     # falling: stopped
+                dur = max(len(c) for c in self._chimes.values()) / CHIME_RATE
+                self._hold_s = dur + 0.05 if chime_hold_s is None else chime_hold_s
+            except Exception as e:
+                log.warning("chime off (sounddevice unavailable: %r)", e)
         self.on_billed = on_billed                    # called with the seconds of audio sent to STT
         self.billed_s = 0.0                           # total seconds sent to STT (provider-independent)
         self.awake = False
         self.responding = False
         self.session = None
+        self.stop_raw_mic = stop_raw_mic              # stop word listens on its own raw mic stream (skips LiveKit's echo/noise filters)
+        self._raw_stream = None
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
         self.best = 0.0                               # highest wake score since the last wake (for tuning)
         self.best_stop = 0.0                          # highest stop score during the current reply (for tuning)
         self.frames_seen = 0                          # frames the stop detector looked at during this reply
@@ -110,10 +148,14 @@ class WakeGate:
     async def filter(self, audio: AsyncIterable[rtc.AudioFrame]) -> AsyncIterable[rtc.AudioFrame]:
         async for frame in audio:
             if self.awake and not self.responding:       # LISTENING: audio goes to STT
+                if time.monotonic() < self._hold_until:  # the chime is playing: do not transcribe it
+                    continue
                 self._bill(frame)
                 yield frame
                 continue
             if self.awake:                               # RESPONDING: STT off, only the stop word is listened for
+                if self._raw_stream is not None:         # the raw mic stream does the stop detection
+                    continue
                 self.frames_seen += 1
                 try:
                     if self._detect(frame, self.stop_oww, "stop"):
@@ -171,6 +213,20 @@ class WakeGate:
                 hit = True
         return hit
 
+    def _chime(self, kind: str) -> None:
+        """Play the chime for 'wake' or 'stop' in a thread (opening the audio device must not block the loop)."""
+        if self._sd is None or kind not in self._chimes:
+            return
+        self._hold_until = time.monotonic() + self._hold_s
+        data, sd = self._chimes[kind], self._sd
+
+        def run() -> None:
+            try:
+                sd.play(data, CHIME_RATE, blocking=False)
+            except Exception as e:
+                log.warning("chime failed: %r", e)
+        threading.Thread(target=run, daemon=True, name="chime").start()
+
     def _reset_audio(self) -> None:
         """Drop everything buffered, so a word spoken in one state never counts in the next."""
         self._pending = np.zeros(0, np.int16)
@@ -193,6 +249,7 @@ class WakeGate:
         self._reset_audio()
         log.info("AWAKE (%s, best score %.2f): STT on", reason, self.best)
         self.best = 0.0
+        self._chime("wake")
         self._arm(self.grace_s, "no question after wake")
         self._notify(True, reason)
 
@@ -218,8 +275,41 @@ class WakeGate:
                 self.session.interrupt(force=True)    # force: the session runs with interruptions disabled
             except Exception as e:
                 log.warning("interrupt failed: %r", e)
+        self._chime("stop")
         self._arm(self.grace_s, "no words after stop")
         self._notify(True, "stop word")
+
+    def _open_raw_mic(self) -> None:
+        """The console runs the mic through echo cancellation / noise suppression / gain control, which push your voice
+        down while the agent plays audio. Listen for the stop word on a separate, unprocessed microphone stream."""
+        try:
+            import sounddevice as sd
+
+            def cb(indata, frames, t, status):
+                if self.awake and self.responding and self._loop is not None:
+                    self._loop.call_soon_threadsafe(self._on_raw, indata[:, 0].copy())
+            self._raw_stream = sd.InputStream(samplerate=OWW_RATE, channels=1, dtype="int16", blocksize=CHUNK, callback=cb)
+            self._raw_stream.start()
+            log.info("stop word listens on its own raw microphone stream")
+        except Exception as e:
+            self._raw_stream = None
+            log.warning("raw mic for the stop word unavailable (%r): using the pipeline audio", e)
+
+    def _on_raw(self, pcm: np.ndarray) -> None:
+        if not (self.awake and self.responding):
+            return
+        self.frames_seen += 1
+        try:
+            score = max(self.stop_oww.predict(pcm).values(), default=0.0)
+        except Exception as e:
+            log.warning("stop detection failed: %r", e)
+            return
+        self.best_stop = max(self.best_stop, score)
+        if score >= 0.25:
+            log.debug("stop score %.2f", score)
+        self._streaks["stop"] = self._streaks["stop"] + 1 if score >= self.stop_threshold else 0
+        if self._streaks["stop"] >= self.stop_hits_needed:
+            self.stop_speaking()
 
     def _notify(self, awake: bool, reason: str) -> None:
         if self.on_change:
@@ -276,6 +366,9 @@ class WakeGate:
     def attach(self, session) -> None:
         """Call once, before session.start()."""
         self.session = session
+        self._loop = asyncio.get_running_loop()
+        if self.stop_raw_mic and self.mute_while_replying:
+            self._open_raw_mic()
 
         @session.on("agent_state_changed")
         def _agent(ev):

@@ -7,7 +7,7 @@ Stack (all open source on the LiveKit side, Apache 2.0):
     STT  STT_PROVIDER = sarvam (saaras:v3-realtime) | soniox (stt-rt-v5) | elevenlabs (scribe_v2_realtime). The provider's own
          endpointing decides end of turn. Switch with one line in settings.env (see stt_factory.py).
     LLM  Groq, same model as before (GROQ_LLM_MODEL), reasoning off.
-    TTS  Sarvam Bulbul v4 Flash. The voice follows the language Sarvam detects in your speech.
+    TTS  TTS_PROVIDER = sarvam (Bulbul v4 Flash) | bakbak (standard | m1). The voice follows the language Sarvam detects in your speech.
     Tool web_search (Tavily, optionally raced against Exa) and get_weather (Open-Meteo, no key).
          Pre-rendered "let me check" clips play while a search runs. The search layer lives in
          search_providers.py (keep it next to this file).
@@ -54,7 +54,11 @@ goes to Sarvam STT (nothing billed). After a reply it keeps listening WAKE_IDLE_
     WAKE_HITS=2                    # consecutive 80 ms chunks above the threshold needed to wake
     WAKE_IDLE_S=5                  # seconds of listening after a reply before going back to sleep
     WAKE_GRACE_S=8                 # seconds to wait for a question after the wake word before going back to sleep
-    WAKE_PREROLL_S=1.2             # audio before the detection that is replayed into STT (so "Anima, ..." is not clipped)
+    WAKE_PREROLL_S=0               # seconds of audio before the detection replayed into STT. 0 = the wake word never reaches
+                                   # the LLM. Above 0 the wake word is transcribed too ("Anima, what's the weather")
+    WAKE_CHIME=1                   # short beep after the wake word (rising) and the stop word (falling)
+    CHIME_VOLUME=0.25              # 0..1
+    CHIME_HOLD_S=                  # STT is held back this long so the beep is not transcribed. Empty = the beep's length
     STT_MUTE_WHILE_REPLYING=1      # STT audio OFF while the agent thinks/speaks (nothing billed, no self-transcription).
                                    # Voice barge-in is replaced by the stop word. 0 = old behaviour.
     STOP_MODEL=                    # stop-word model (stop.onnx or a pretrained name). Empty = same model as WAKE_MODEL
@@ -123,6 +127,7 @@ from usage_meter import UsageMeter
 from agent_logging import setup_logging
 from settings import get_models, load_settings
 from stt_factory import build_stt
+from tts_factory import make_tts, set_voice, voice_label
 
 load_settings()                 # settings.env: models, voices, timings (no secrets)
 load_dotenv()                   # .env: API keys only
@@ -141,6 +146,7 @@ MODELS = get_models()           # the model names; the price calculator reads th
 LLM_MODEL = MODELS["llm"]
 MAX_REPLY_TOKENS = int(env("MAX_REPLY_TOKENS", "500"))       # Hindi/Punjabi text costs many tokens per character
 TTS_MODEL = MODELS["tts"]
+TTS_PROVIDER = MODELS["tts_provider"]        # sarvam | bakbak
 STT_MODEL = MODELS["stt"]
 STT_PROVIDER = MODELS["stt_provider"]
 REASONING_EFFORT = env("GROQ_REASONING_EFFORT", "low")
@@ -183,11 +189,15 @@ WAKE_THRESHOLD = float(env("WAKE_THRESHOLD", "0.5"))
 WAKE_HITS = int(env("WAKE_HITS", "2"))
 WAKE_IDLE_S = float(env("WAKE_IDLE_S", "5"))
 WAKE_GRACE_S = float(env("WAKE_GRACE_S", "8"))
-WAKE_PREROLL_S = float(env("WAKE_PREROLL_S", "1.2"))
+WAKE_PREROLL_S = float(env("WAKE_PREROLL_S", "0"))       # 0 = the wake word itself is never sent to STT / the LLM
+WAKE_CHIME = env("WAKE_CHIME", "1") != "0"               # short beep after the wake word and after the stop word
+CHIME_VOLUME = float(env("CHIME_VOLUME", "0.25"))
+CHIME_HOLD_S = float(env("CHIME_HOLD_S")) if env("CHIME_HOLD_S") else None   # STT held back while it plays (default: its length)
 MUTE_WHILE_REPLYING = env("STT_MUTE_WHILE_REPLYING", "1") != "0"      # needs the wake gate; see wakeword.py
 STOP_MODEL = env("STOP_MODEL", "") or None
 STOP_THRESHOLD = float(env("STOP_THRESHOLD")) if env("STOP_THRESHOLD") else None
 STOP_HITS = int(env("STOP_HITS")) if env("STOP_HITS") else None
+STOP_RAW_MIC = env("STOP_RAW_MIC", "1") != "0"     # stop word on its own raw mic stream (use with headphones)
 SEARCH_FAILED_MSG = "The search failed or timed out. Tell the user in a few words that you could not check right now."
 TTS_RATE = 24000
 
@@ -388,7 +398,7 @@ INSTRUCTIONS = (
     "'go back to my own language'), call the set_language tool at once without saying anything first, "
     "then confirm the change in one short sentence in the new language. "
     "Do not call it when the user only wants a phrase translated or one word explained. "
-    "Maximum 3-4 short sentences, under 240 characters. "
+    "be as exxpressive as you can and talk to user like a friend.. "
     "Only go into detail if the user asks you to continue or asks a detailed question. "
     "For weather or temperature questions call the get_weather tool. "
     "For anything else current (news, prices, scores, recent events) call the web_search tool "
@@ -462,21 +472,21 @@ class VoiceAgent(Agent):
 
     # --- language + voice ---
     def voice_label(self, lang: str) -> str:
-        return f"{CODES[lang]} · {SPEAKERS[lang]}"
+        return voice_label(TTS_PROVIDER, TTS_MODEL, lang, codes=CODES, speakers=SPEAKERS)
 
     def apply_voice(self, lang: str) -> None:
         """Load the voice of `lang` into the TTS. Takes effect from the next synthesis."""
         if lang not in CODES or lang == self.voice_lang or self.tts_engine is None:
             return
         try:
-            self.tts_engine.update_options(target_language_code=CODES[lang], speaker=SPEAKERS[lang])
+            set_voice(self.tts_engine, TTS_PROVIDER, TTS_MODEL, lang, codes=CODES, speakers=SPEAKERS)
         except Exception as e:
             logger.warning("voice switch to %s failed: %s", lang, e)
             return
         self.voice_lang = lang
         if self.ui:
             self.ui.voice = self.voice_label(lang)
-        print(f"  [voice] {CODES[lang]} ({SPEAKERS[lang]})")
+        print(f"  [voice] {self.voice_label(lang)}")
 
     async def apply_language(self, mode: str, source: str) -> bool:
         """Switch the reply language. mode: auto | hi | pa | en. source: voice | menu. Returns False if nothing changed."""
@@ -764,15 +774,9 @@ def make_components():
         llm_kwargs["reasoning_effort"] = "none"       # instruct mode: no thinking tokens
     llm = groq.LLM(model=LLM_MODEL, temperature=0.7, max_completion_tokens=MAX_REPLY_TOKENS,
                    **llm_kwargs)
-    tts = sarvam.TTS(
-        model=TTS_MODEL,
-        target_language_code=CODES[INITIAL_LANG],
-        speaker=SPEAKERS[INITIAL_LANG],
-        speech_sample_rate=TTS_RATE,
-        output_audio_codec="linear16",   # raw PCM: skips a decode step
-        min_buffer_size=30,              # smaller = first audio sooner
-        max_chunk_length=150,
-    )
+    tts = make_tts(TTS_PROVIDER, TTS_MODEL, INITIAL_LANG, rate=TTS_RATE, codes=CODES, speakers=SPEAKERS,
+                   min_buffer_size=30,      # Sarvam only: smaller = first audio sooner
+                   max_chunk_length=150)
     return stt, llm, tts
 
 
@@ -801,7 +805,7 @@ def make_session(stt, llm, tts, vad=None, allow_interruptions: bool = True) -> A
         max_tool_steps=3,                 # e.g. set_language + get_weather + the answer
         user_away_timeout=None,
         conn_options=SessionConnectOptions(
-            stt_conn_options=APIConnectOptions(timeout=5.0),
+            stt_conn_options=APIConnectOptions(timeout=10.0),
             tts_conn_options=APIConnectOptions(max_retry=1, timeout=5.0),
             llm_conn_options=APIConnectOptions(max_retry=1, timeout=LLM_TIMEOUT_S),   # was 8 s: one stall = 10 s of silence
         ),
@@ -811,8 +815,7 @@ def make_session(stt, llm, tts, vad=None, allow_interruptions: bool = True) -> A
 async def load_fillers(agent: VoiceAgent) -> None:
     """Render the filler phrases once, in the background, so playing one costs no TTS time."""
     for lang in FILLER_TEXT:
-        t = sarvam.TTS(model=TTS_MODEL, target_language_code=CODES[lang], speaker=SPEAKERS[lang],
-                       speech_sample_rate=TTS_RATE, output_audio_codec="linear16", min_buffer_size=30)
+        t = make_tts(TTS_PROVIDER, TTS_MODEL, lang, rate=TTS_RATE, codes=CODES, speakers=SPEAKERS, min_buffer_size=30)
         for table, target in ((FILLER_TEXT, agent.fillers), (LONG_FILLER_TEXT, agent.fillers_long)):
             clips = []
             for text in table[lang]:
@@ -1035,7 +1038,8 @@ async def entrypoint(ctx: JobContext) -> None:
                 WakeGate, WAKE_MODEL, name=WAKE_NAME, threshold=WAKE_THRESHOLD, idle_s=WAKE_IDLE_S,
                 grace_s=WAKE_GRACE_S, preroll_s=WAKE_PREROLL_S, hits=WAKE_HITS,
                 mute_while_replying=MUTE_WHILE_REPLYING, stop_model=STOP_MODEL,
-                stop_threshold=STOP_THRESHOLD, stop_hits=STOP_HITS)
+                stop_threshold=STOP_THRESHOLD, stop_hits=STOP_HITS, stop_raw_mic=STOP_RAW_MIC,
+                chime=WAKE_CHIME, chime_volume=CHIME_VOLUME, chime_hold_s=CHIME_HOLD_S)
         except Exception as e:
             logger.error("wake word is OFF, the agent listens all the time: %r", e)
             print(f"  [wake] OFF, always listening: {e}")

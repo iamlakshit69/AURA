@@ -17,12 +17,14 @@ from dotenv import load_dotenv
 SETTINGS_FILE = os.getenv("SETTINGS_FILE", "settings.env")
 
 STT_PROVIDERS = ("sarvam", "soniox", "elevenlabs")
+TTS_PROVIDERS = ("sarvam", "bakbak")
+# One TTS model per provider, same idea as STT.
+TTS_MODEL_KEYS = {"sarvam": ("TTS_MODEL", "bulbul:v4-flash"), "bakbak": ("BAKBAK_MODEL", "standard")}
 
 # Used when settings.env does not say. This is the ONE place these defaults live: the agent and the
 # price calculator both read the models through get_models().
 DEFAULT_MODELS = {
     "GROQ_LLM_MODEL": "qwen/qwen3.8-27b",
-    "TTS_MODEL": "bulbul:v4-flash",
 }
 # One STT model per provider, so switching STT_PROVIDER never leaves you with another provider's model name.
 STT_MODEL_KEYS = {
@@ -44,8 +46,15 @@ def get_stt_provider() -> str:
     return p
 
 
+def get_tts_provider() -> str:
+    p = (os.getenv("TTS_PROVIDER") or "sarvam").strip().lower()
+    if p not in TTS_PROVIDERS:
+        raise ValueError(f"TTS_PROVIDER={p!r} is not one of {', '.join(TTS_PROVIDERS)}")
+    return p
+
+
 def get_models() -> dict:
-    """The models in use right now: {'llm', 'tts', 'stt', 'stt_provider'}. The prices are looked up by these names."""
+    """The models in use right now: {'llm', 'tts', 'stt', 'stt_provider', 'tts_provider'}. The prices are looked up by these names."""
     def one(key: str) -> str:
         return (os.getenv(key) or DEFAULT_MODELS[key]).strip()
     provider = get_stt_provider()
@@ -53,4 +62,7 @@ def get_models() -> dict:
     stt = (os.getenv(key) or "").strip()
     if not stt and provider == "sarvam":
         stt = (os.getenv("STT_MODEL") or "").strip()          # the old name, still honoured for Sarvam
-    return {"llm": one("GROQ_LLM_MODEL"), "tts": one("TTS_MODEL"), "stt": stt or default, "stt_provider": provider}
+    tkey, tdefault = TTS_MODEL_KEYS[get_tts_provider()]
+    tts = (os.getenv(tkey) or tdefault).strip()
+    return {"llm": one("GROQ_LLM_MODEL"), "tts": tts, "tts_provider": get_tts_provider(),
+            "stt": stt or default, "stt_provider": provider}

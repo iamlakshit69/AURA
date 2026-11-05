@@ -5,7 +5,7 @@ It takes over the terminal (alternate screen), so nothing is left in your scroll
 
     +-- header: status pill, mic, reply language, voice, models -----------------+
     | conversation (newest at the bottom)      | latency, per-stage bars          |
-    |                                          | token / character / search usage |
+    |                                          | COST: split by LLM/TTS/STT/search|
     +-- log: everything the agent print()s or logs, captured so it cannot break the screen -+
     |  M mute   L language   1-4 quick language   J/K scroll   Q quit            |
 
@@ -13,6 +13,7 @@ Keys (all act on the FIRST press):
     M / Space      mute / unmute the microphone
     L / Tab        open the language dropdown (Up/Down or J/K to move, Enter to pick, Esc to close)
     1 2 3 4        pick a reply language directly (Auto, Hindi, Punjabi, English)
+    (header shows the running session cost at all times)
     K / Up         scroll the conversation up      J / Down   scroll down
     PgUp / PgDn    scroll faster                   B / End    jump back to the latest message
     Q              quit (Ctrl+C also works)
@@ -113,12 +114,79 @@ def _stage_style(ms: float) -> str:
     return C_GREEN if ms < 500 else C_YELLOW if ms < 1200 else C_RED
 
 
+_STOPS = ((0x9E, 0xCE, 0x6A), (0xE0, 0xAF, 0x68), (0xF7, 0x76, 0x8E))     # green -> yellow -> red
+
+
+def _grad(t: float) -> str:
+    """Colour at position t (0..1) along a green -> yellow -> red ramp (the btop look)."""
+    t = min(max(t, 0.0), 1.0) * 2
+    i = min(int(t), 1)
+    f = t - i
+    a, b = _STOPS[i], _STOPS[i + 1]
+    return "#%02x%02x%02x" % tuple(round(a[k] + (b[k] - a[k]) * f) for k in range(3))
+
+
 def _bar(ms: float, top: float = 3000.0, width: int = 16) -> Text:
+    """Latency bar: every filled cell has its own colour, so a long bar visibly runs into the red."""
     n = min(width, max(0, int(ms / top * width + 0.5)))
     t = Text()
-    t.append("━" * n, style=_stage_style(ms))
+    for i in range(n):
+        t.append("━", style=_grad(i / max(width - 1, 1)))
     t.append("─" * (width - n), style=C_LINE)
     return t
+
+
+_BL = (0x40, 0x04, 0x02, 0x01)       # braille dots of the left column, bottom -> top
+_BR = (0x80, 0x20, 0x10, 0x08)       # right column
+
+
+def _braille(values: list, top: float = 0.0, width: int = 24) -> str:
+    """Tiny graph with 2 samples per character and 4 height levels each (twice the detail of ▁▂▃)."""
+    vals = [max(float(v), 0.0) for v in values][-width * 2:]
+    if not vals:
+        return ""
+    if len(vals) % 2:
+        vals.insert(0, 0.0)
+    top = top or max(vals) or 1.0
+    out = []
+    for i in range(0, len(vals), 2):
+        mask = 0
+        for col, v in ((_BL, vals[i]), (_BR, vals[i + 1])):
+            h = min(4, round(v / top * 4))
+            if v > 0:
+                h = max(h, 1)
+            for bit in col[:h]:
+                mask |= bit
+        out.append(chr(0x2800 + mask))
+    return "".join(out)
+
+
+_EIGHTHS = " ▏▎▍▌▋▊▉█"
+
+
+def _cbar(share: float, width: int = 10) -> str:
+    """Horizontal bar with 1/8-cell resolution."""
+    eighths = round(min(max(share, 0.0), 1.0) * width * 8)
+    full, rem = divmod(eighths, 8)
+    bar = "█" * full + (_EIGHTHS[rem] if rem else "")
+    return bar + "░" * (width - len(bar))
+
+
+COST_PARTS = ("tts", "stt", "llm", "search")
+COST_COLORS = {"tts": C_CYAN, "stt": C_GREEN, "llm": C_PURPLE, "search": C_ORANGE}
+
+
+def _parts(c) -> dict:
+    """Whatever the meter gives for a cost (dict or bare number) -> {tts, stt, llm, search, total}."""
+    if isinstance(c, dict):
+        d = {k: float(c.get(k) or 0.0) for k in COST_PARTS}
+        d["total"] = float(c.get("total") or sum(d.values()))
+        return d
+    try:
+        total = float(c)
+    except (TypeError, ValueError):
+        total = 0.0
+    return {**{k: 0.0 for k in COST_PARTS}, "total": total}
 
 
 def _fmt(n: float) -> str:
@@ -267,7 +335,9 @@ class VoiceUI:
         self.searching = ""                # "" or a label such as "search" / "weather"
         self.lat: dict = {}                # stt, eot, llm, tts, e2e, search (ms or None)
         self.e2e_history: list[float] = []
-        self.last_usage: Optional[dict] = None
+        self.cost_history: collections.deque = collections.deque(maxlen=48)   # cost of each finished reply
+        self.replies_cost = 0.0            # sum of all reply costs: session total minus this = overhead
+        self._last_usage: Optional[dict] = None
         self.partial = ""                  # what you are saying right now (live transcript)
         self.scroll = 0                    # lines scrolled up in the conversation (0 = following the latest)
         self.turns = 0
@@ -338,12 +408,26 @@ class VoiceUI:
     def set_latency(self, *, stt=None, eot=None, llm=None, tts=None, e2e=None, search=None) -> None:
         self.lat = dict(stt=stt, eot=eot, llm=llm, tts=tts, e2e=e2e, search=search)
         if isinstance(e2e, (int, float)):
-            self.e2e_history = (self.e2e_history + [float(e2e)])[-24:]
+            self.e2e_history = (self.e2e_history + [float(e2e)])[-48:]
         self.poke()
 
     def poke(self) -> None:
         """Ask the draw thread to redraw right now (key presses use this, so they feel instant)."""
         self._wake.set()
+
+    @property
+    def last_usage(self) -> Optional[dict]:
+        return self._last_usage
+
+    @last_usage.setter
+    def last_usage(self, u: Optional[dict]) -> None:
+        """The agent sets this after every reply; we also keep the reply's cost for the cost panel."""
+        self._last_usage = u
+        if u and u.get("cost") is not None:
+            total = _parts(u["cost"])["total"]
+            self.cost_history.append(total)
+            self.replies_cost += total
+        self.poke()
 
     # ---------------- conversation (drawn inside the screen) ----------------
     def set_partial(self, text: str) -> None:
@@ -533,7 +617,14 @@ class VoiceUI:
         top.add_column(ratio=1)
         top.add_column(justify="center")
         top.add_column(justify="right", ratio=1)
-        top.add_row(left, Text.assemble(mic, "  ", lang), right)
+        cost_pill = Text("")
+        if self.meter:
+            try:
+                cost_pill = Text(f" ◆ {self.meter.cost_text(self.meter.session_cost())} ",
+                                 style=f"bold {C_INK} on {C_ORANGE}", no_wrap=True)
+            except Exception:
+                pass
+        top.add_row(left, Text.assemble(mic, "  ", lang, "  " if cost_pill.plain else "", cost_pill), right)
 
         if self.toast and time.monotonic() < self.toast[2]:
             text, kind, _ = self.toast
@@ -614,7 +705,8 @@ class VoiceUI:
             head.append("waiting for the first reply", style=C_DIM)
         else:
             head.append(f"{e2e / 1000:.2f}s", style=f"bold {_lat_style(e2e)}")
-            head.append("  " + _spark(self.e2e_history), style=_lat_style(e2e))
+            head.append("  " + _braille(self.e2e_history, top=max(2000.0, *self.e2e_history), width=24),
+                        style=_lat_style(e2e))
         rows.append(head)
 
         grid = Table.grid(padding=(0, 1))
@@ -629,31 +721,115 @@ class VoiceUI:
                 grid.add_row(name, _bar(0), Text("-", style=C_DIM))
         rows += [Text(""), grid, Text("")]
 
-        u = self.last_usage
-        s = self.meter.session if self.meter else None
-        use = Table.grid(padding=(0, 1))
-        use.add_column(style=C_DIM, no_wrap=True)
-        use.add_column(no_wrap=True, style=C_SOFT)
-        use.add_row(Text("LAST REPLY", style=f"bold {C_DIM}"), "")
-        if u:
-            use.add_row(" llm", f"{_fmt(u['llm_prompt_tokens'])} in / {_fmt(u['llm_completion_tokens'])} out")
-            use.add_row(" tts", f"{_fmt(u['tts_chars'])} chars" + (" (est.)" if u.get("tts_estimated") else ""))
-            if u["tavily_requests"] or u["exa_requests"]:
-                use.add_row(" search", Text(f"{_fmt(u['tavily_requests'] + u['exa_requests'])} calls", style=C_PURPLE))
-            if u.get("cost") and self.meter:
-                use.add_row(" cost", Text(self.meter.cost_text(u["cost"]), style=C_PURPLE))
-        else:
-            use.add_row(" ", Text("nothing yet", style=C_DIM))
-        if s:
-            use.add_row("", "")
-            use.add_row(Text("SESSION", style=f"bold {C_DIM}"), "")
-            use.add_row(" llm", f"{_fmt(s['llm_prompt_tokens'] + s['llm_completion_tokens'])} tokens")
-            use.add_row(" tts", f"{_fmt(s['tts_chars'])} chars")
-            use.add_row(" stt", f"{s['stt_audio_s']:.0f} s")
-            use.add_row(" search", f"{_fmt(s['tavily_credits'])} tavily / {_fmt(s['exa_requests'])} exa")
-            use.add_row(" cost", Text(self.meter.cost_text(self.meter.session_cost()), style=f"bold {C_PURPLE}"))
-        rows.append(use)
+        h = self.e2e_history
+        if len(h) >= 2:
+            rows.append(Text(f"avg {sum(h) / len(h) / 1000:.2f}s   best {min(h) / 1000:.2f}s   "
+                             f"worst {max(h) / 1000:.2f}s", style=C_DIM))
         return Group(*rows)
+
+    # ---------------- cost ----------------
+    def _currency(self) -> str:
+        m = self.meter
+        for obj in (m, getattr(m, "prices", None)):
+            c = getattr(obj, "currency", None)
+            if isinstance(c, str) and c and c != "?":
+                return c
+        return ""
+
+    @staticmethod
+    def _usage_text(part: str, s: dict) -> str:
+        if part == "llm":
+            n = int(s.get("llm_prompt_tokens", 0) + s.get("llm_completion_tokens", 0))
+            return f"{n / 1000:.1f}k tok" if n >= 1000 else f"{n} tok"
+        if part == "tts":
+            return f"{_fmt(s.get('tts_chars', 0))} ch"
+        if part == "stt":
+            return f"{s.get('stt_audio_s', 0):.0f} s"
+        return f"{_fmt(s.get('tavily_credits', 0))} tav / {_fmt(s.get('exa_requests', 0))} exa"
+
+    def _cost_panel(self) -> Panel:
+        cur = self._currency()
+        title = Text.assemble((" ", ""), ("COST", f"bold {C_TEXT}"), (f" · {cur} " if cur else " ", C_DIM))
+        box_kw = dict(title=title, title_align="left", box=box.ROUNDED, border_style=C_LINE, padding=(0, 1))
+        if not self.meter:
+            return Panel(Text("no usage meter attached", style=C_DIM), **box_kw)
+        m = self.meter
+        sess = m.session
+        raw = m.session_cost()
+        c = _parts(raw)
+        shown = sum(c[k] for k in COST_PARTS)
+        mins = (time.monotonic() - self.started) / 60
+        rows: list = []
+
+        head = Text()
+        head.append(m.cost_text(raw), style=f"bold {C_PURPLE}")
+        head.append("  this session", style=C_DIM)
+        if mins >= 0.75 and c["total"] > 0:
+            head.append(f"   ≈ {c['total'] / mins:.2f}/min", style=C_DIM)
+        rows.append(head)
+
+        W = 30                                             # one stacked bar: who got the money
+        stack, done, acc = Text(), 0, 0.0
+        if shown > 0:
+            for k in COST_PARTS:
+                acc += c[k]
+                edge = round(acc / shown * W)
+                stack.append("█" * (edge - done), style=COST_COLORS[k])
+                done = edge
+        stack.append("░" * (W - done), style=C_LINE)
+        rows += [stack, Text("")]
+
+        grid = Table.grid(padding=(0, 1))
+        grid.add_column(no_wrap=True)
+        grid.add_column(no_wrap=True)
+        grid.add_column(justify="right", no_wrap=True)
+        grid.add_column(justify="right", no_wrap=True)
+        grid.add_column(no_wrap=True, overflow="crop", style=C_DIM)
+        for k in COST_PARTS:
+            share = c[k] / shown if shown else 0.0
+            grid.add_row(Text(k.upper(), style=f"bold {COST_COLORS[k]}"),
+                         Text(_cbar(share), style=COST_COLORS[k] if c[k] else C_LINE),
+                         Text(f"{c[k]:.2f}", style=C_TEXT if c[k] else C_DIM),
+                         Text(f"{share * 100:.0f}%", style=C_SOFT if c[k] else C_DIM),
+                         self._usage_text(k, sess))
+        rows.append(grid)
+
+        over = max(c["total"] - self.replies_cost, 0.0)
+        if c["total"] > 0:
+            rows.append(Text(f" ↳ overhead {over:.2f} ({over / c['total'] * 100:.0f}%) fillers+unfinished",
+                             style=C_DIM, no_wrap=True, overflow="ellipsis"))
+        unpriced = raw.get("unpriced") if isinstance(raw, dict) else None
+        if unpriced:
+            names = ", ".join(unpriced) if isinstance(unpriced, (list, tuple, set)) else str(unpriced)
+            rows.append(Text(f" ✖ UNPRICED: {names} (counted as 0, run price_check.py)", style=f"bold {C_RED}",
+                             no_wrap=True, overflow="ellipsis"))
+        rows.append(Text(""))
+
+        u = self.last_usage
+        last = Text()
+        last.append("LAST REPLY  ", style=f"bold {C_DIM}")
+        if u and u.get("cost") is not None:
+            lp = _parts(u["cost"])
+            last.append(m.cost_text(u["cost"]), style=f"bold {C_PURPLE}")
+            big = max(COST_PARTS, key=lambda k: lp[k])
+            if lp["total"] > 0 and lp[big] > 0:
+                last.append(f"  mostly {big.upper()} {lp[big] / max(sum(lp[k] for k in COST_PARTS), 1e-9) * 100:.0f}%",
+                            style=COST_COLORS[big])
+        else:
+            last.append("nothing yet", style=C_DIM)
+        rows.append(last)
+        if u:
+            line = (f" {_fmt(u.get('llm_prompt_tokens', 0))} in / {_fmt(u.get('llm_completion_tokens', 0))} out"
+                    f" · {_fmt(u.get('tts_chars', 0))} ch" + (" (est.)" if u.get("tts_estimated") else ""))
+            calls = u.get("tavily_requests", 0) + u.get("exa_requests", 0)
+            if calls:
+                line += f" · {_fmt(calls)} search"
+            rows.append(Text(line, style=C_SOFT, no_wrap=True, overflow="ellipsis"))
+        hist = list(self.cost_history)
+        if len(hist) >= 2:
+            rows.append(Text.assemble((" per reply ", C_DIM), (_braille(hist, width=20), C_PURPLE),
+                                      (f"  avg {sum(hist) / len(hist):.3f}  max {max(hist):.3f}", C_DIM)))
+        return Panel(Group(*rows), **box_kw)
 
     def _footer(self) -> Text:
         if os.getenv("UI_KEYS", "1") == "0":
@@ -679,7 +855,7 @@ class VoiceUI:
         log_h = 8 if h >= 32 else 6 if h >= 22 else 0
         body_h = max(h - 4 - log_h - 1, 4)
         wide = w >= 100
-        stats_h = 0 if wide else min(16, max(body_h // 2, 0))
+        stats_h = 0 if wide else min(17, max(body_h // 2, 0))
         chat_h = body_h if wide else body_h - stats_h
         chat_w = (w * 3 // 5 if wide else w) - 4
 
@@ -694,10 +870,16 @@ class VoiceUI:
         root = Layout()
         parts = [Layout(header, name="head", size=4)]
         body = Layout(name="body", ratio=1)
+        cost = self._cost_panel()
         if wide:
-            body.split_row(Layout(chat, name="chat", ratio=3), Layout(stats, name="stats", ratio=2))
+            side = Layout(name="side", ratio=2)
+            side.split_column(Layout(stats, name="stats", ratio=1),
+                              Layout(cost, name="cost", size=min(16, max(body_h - 8, 7))))
+            body.split_row(Layout(chat, name="chat", ratio=3), side)
         else:
-            body.split_column(Layout(chat, name="chat", ratio=1), Layout(stats, name="stats", size=max(stats_h, 3)))
+            low = Layout(name="low", size=max(stats_h, 3))
+            low.split_row(Layout(stats, name="stats", ratio=1), Layout(cost, name="cost", ratio=1))
+            body.split_column(Layout(chat, name="chat", ratio=1), low)
         parts.append(body)
         if log_h:
             lines = []
@@ -851,7 +1033,7 @@ class VoiceUI:
         return (self.console.size, self.status, self.voice, self.muted, self.asleep, tuple(sorted(self.lat.items())),
                 len(self.chat), len(self.log), self.partial, self.scroll, self.turns, int((now - self.started) // 60),
                 tuple(self.e2e_history[-1:]), u.get("time"), self.lang_mode, self.menu_open, self.menu_idx,
-                self.toast_id, toast_on, anim,
+                self.toast_id, toast_on, anim, len(self.cost_history),
                 m.get("llm_prompt_tokens"), m.get("llm_completion_tokens"), m.get("tts_chars"),
                 round(m.get("stt_audio_s", 0)), m.get("tavily_credits"), m.get("exa_requests"),
                 self.meter.cost_text(self.meter.session_cost()) if self.meter else "")
@@ -883,8 +1065,10 @@ class VoiceUI:
         self._tick = threading.Thread(target=self._tick_loop, name="ui-tick", daemon=True)
         self._tick.start()
         if keys_on:
-            self._claim_stdin()
-            self._keys = threading.Thread(target=self._key_loop, name="ui-keys", daemon=True)
+            def _keys_main() -> None:        # the keyboard takeover can block for seconds: never on the event loop
+                self._claim_stdin()
+                self._key_loop()
+            self._keys = threading.Thread(target=_keys_main, name="ui-keys", daemon=True)
             self._keys.start()
 
     def stop(self) -> None:
