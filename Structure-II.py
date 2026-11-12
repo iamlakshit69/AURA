@@ -59,6 +59,11 @@ goes to Sarvam STT (nothing billed). After a reply it keeps listening WAKE_IDLE_
     WAKE_CHIME=1                   # short beep after the wake word (rising) and the stop word (falling)
     CHIME_VOLUME=0.25              # 0..1
     CHIME_HOLD_S=                  # STT is held back this long so the beep is not transcribed. Empty = the beep's length
+    CONTINUOUS_LISTEN=1            # DEFAULT. STT stays ON while the agent thinks/speaks: just talk over it, it stops at once and
+                                   # answers your new question. Forces STT_MUTE_WHILE_REPLYING off (no stop word needed) and
+                                   # defaults LOCAL_VAD=1, INTERRUPT_MIN_WORDS=0, INTERRUPT_MIN_DURATION_S=0.3. USE HEADPHONES:
+                                   # on open speakers the agent hears itself and cuts itself off. STT is billed for the whole
+                                   # awake time, replies included. 0 = the old muted mode with a stop word.
     STT_MUTE_WHILE_REPLYING=1      # STT audio OFF while the agent thinks/speaks (nothing billed, no self-transcription).
                                    # Voice barge-in is replaced by the stop word. 0 = old behaviour.
     STOP_MODEL=                    # stop-word model (stop.onnx or a pretrained name). Empty = same model as WAKE_MODEL
@@ -177,9 +182,12 @@ LONG_WAIT_S = float(env("LONG_WAIT_S", "2.0"))
 KEEPALIVE_S = float(env("KEEPALIVE_S", "40"))
 DEFAULT_CITY = env("DEFAULT_CITY", "Ludhiana")
 LLM_TIMEOUT_S = float(env("LLM_TIMEOUT_S", "4.0"))
-LOCAL_VAD = env("LOCAL_VAD", "0") == "1"                     # OFF = your old behaviour (interrupt on a transcribed word). 1 = bundled Silero VAD: faster, but can react to echo
-INTERRUPT_MIN_WORDS = int(env("INTERRUPT_MIN_WORDS", "1"))   # real words needed to interrupt (as in your old file); 0 only with LOCAL_VAD=1
-INTERRUPT_MIN_DURATION_S = float(env("INTERRUPT_MIN_DURATION_S", "0.5"))   # speech length that counts as a barge-in
+# CONTINUOUS_LISTEN=1: after the wake word the microphone stays open to STT while the agent thinks and speaks.
+# Talk over it and it stops at once and answers the new question. No stop word, STT is never muted during a reply.
+CONTINUOUS_LISTEN = env("CONTINUOUS_LISTEN", "1") != "0"
+LOCAL_VAD = env("LOCAL_VAD", "1" if CONTINUOUS_LISTEN else "0") == "1"                     # OFF = your old behaviour (interrupt on a transcribed word). 1 = bundled Silero VAD: faster, but can react to echo
+INTERRUPT_MIN_WORDS = int(env("INTERRUPT_MIN_WORDS", "0" if CONTINUOUS_LISTEN else "1"))   # real words needed to interrupt (as in your old file); 0 only with LOCAL_VAD=1
+INTERRUPT_MIN_DURATION_S = float(env("INTERRUPT_MIN_DURATION_S", "0.3" if CONTINUOUS_LISTEN else "0.5"))   # speech length that counts as a barge-in
 FALSE_INTERRUPT_S = float(env("FALSE_INTERRUPT_S", "1.3"))   # noise only: resume talking after this much silence
 PREEMPTIVE = env("PREEMPTIVE", "1") != "0"
 WAKE_ENABLED = env("WAKE_ENABLED", "1") != "0"
@@ -193,7 +201,7 @@ WAKE_PREROLL_S = float(env("WAKE_PREROLL_S", "0"))       # 0 = the wake word its
 WAKE_CHIME = env("WAKE_CHIME", "1") != "0"               # short beep after the wake word and after the stop word
 CHIME_VOLUME = float(env("CHIME_VOLUME", "0.25"))
 CHIME_HOLD_S = float(env("CHIME_HOLD_S")) if env("CHIME_HOLD_S") else None   # STT held back while it plays (default: its length)
-MUTE_WHILE_REPLYING = env("STT_MUTE_WHILE_REPLYING", "1") != "0"      # needs the wake gate; see wakeword.py
+MUTE_WHILE_REPLYING = env("STT_MUTE_WHILE_REPLYING", "1") != "0" and not CONTINUOUS_LISTEN      # needs the wake gate; see wakeword.py
 STOP_MODEL = env("STOP_MODEL", "") or None
 STOP_THRESHOLD = float(env("STOP_THRESHOLD")) if env("STOP_THRESHOLD") else None
 STOP_HITS = int(env("STOP_HITS")) if env("STOP_HITS") else None
@@ -1083,7 +1091,8 @@ async def entrypoint(ctx: JobContext) -> None:
             ui.set_awake(False, "start")
         else:
             print(f"  [wake] asleep: say '{WAKE_NAME}' to start"
-                  + (f"; say the stop word ({gate.stop_label}) to interrupt a reply" if muted else ""))
+                  + (f"; say the stop word ({gate.stop_label}) to interrupt a reply" if muted
+                     else "; after that, just talk over a reply to interrupt it" if CONTINUOUS_LISTEN else ""))
     attach_logging(session, agent, tts, ui)
     ctx.add_shutdown_callback(agent.aclose)
     agent._bg.append(asyncio.create_task(agent.warm()))   # open search connections while the session starts

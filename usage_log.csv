@@ -194,3 +194,5 @@ time,llm,reply_chars,llm_requests,llm_prompt_tokens,llm_cached_tokens,llm_comple
 2026-11-05T10:13:02,openai/gpt-oss-20b,37,1,893,0,42,36,1.823,5.3,0,0,0,0,0,standard,saaras:v3-realtime
 2026-11-05T10:13:21,openai/gpt-oss-20b,111,2,1999,0,82,111,7.253,9.5,2,2,1,0,0,standard,saaras:v3-realtime
 2026-11-05T10:13:35,openai/gpt-oss-20b,40,2,2282,0,40,40,2.133,10.1,0,0,0,0,0,standard,saaras:v3-realtime
+2026-11-12T10:44:34,openai/gpt-oss-20b,69,1,883,0,45,69,4.04,9.0,0,0,0,0,0,bulbul:v4-flash,saaras:v3-realtime
+2026-11-12T10:44:42,openai/gpt-oss-20b,57,2,1875,0,42,57,2.82,7.7,0,0,0,0,0,bulbul:v4-flash,saaras:v3-realtime

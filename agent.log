@@ -2738,3 +2738,19 @@ livekit.agents._exceptions.APIStatusError: message='Sarvam realtime STT error: N
 2026-11-05 10:13:36,519 | INFO    | voice-agent.usage | session 20261105-101147 cost | llm 0.04150 INR tts 0.01564 INR stt 0.22867 INR search 1.90 INR | TOTAL 2.18 INR | replies 2.15 INR + fillers/unfinished turns 0.03366 INR
 2026-11-05 10:13:46,515 | ERROR   | livekit.agents | job shutdown is taking too much time..
 2026-11-05 10:16:23,466 | INFO    | voice-agent | ==================== process 8455 started ====================
+2026-11-12 10:44:07,919 | INFO    | voice-agent | ==================== process 15360 started ====================
+2026-11-12 10:44:08,485 | WARNING | livekit.agents | no warmed process available for job, waiting for one to be created
+2026-11-12 10:44:08,619 | WARNING | voice-agent.stt | sarvam.STTRealtime has no model parameter: the plugin default is used; saaras:v3-realtime is only used for the price lookup
+2026-11-12 10:44:10,892 | INFO    | voice-agent.wake | wake word ready: model alexa, threshold 0.50, hits 2, idle 10.0 s, grace 8.0 s | STT muted while replying: False
+2026-11-12 10:44:10,893 | WARNING | livekit.agents | LIVEKIT_INFERENCE_URL is set but LIVEKIT_API_KEY, LIVEKIT_API_SECRET missing; falling back to the turn-detector-v1-mini model
+2026-11-12 10:44:10,898 | INFO    | voice-agent.usage | session 20261112-104410 started | llm openai/gpt-oss-20b | tts bulbul:v4-flash | stt saaras:v3-realtime (sarvam) | report currency INR | prices file prices.ini
+2026-11-12 10:44:10,921 | WARNING | livekit.agents | metrics_collected is deprecated. Use session_usage_updated for usage tracking and ChatMessage.metrics for per-turn latency.
+2026-11-12 10:44:19,291 | INFO    | voice-agent | fillers cached: {'en': 2, 'hi': 2, 'pa': 2}, long: {'en': 2, 'hi': 2, 'pa': 2}
+2026-11-12 10:44:25,205 | INFO    | voice-agent.wake | AWAKE (wake word, best score 0.97): STT on
+2026-11-12 10:44:33,175 | INFO    | voice-agent | latency | e2e 15894 ms | stt 14496 | end-of-turn 14497 | llm first token 1015 | tts first byte 287 | search -
+2026-11-12 10:44:34,438 | INFO    | voice-agent.usage | reply #1 | llm 883 in (0 cached) / 45 out, tts 69 chars, stt 9.0 s (since last reply), search tavily 0 (0 cr) exa 0 | COST 0.21907 INR (llm 0.00757, tts 0.13800, stt 0.07350, search 0.00000)
+2026-11-12 10:44:40,912 | INFO    | voice-agent | latency | e2e  ms | stt  | end-of-turn  | llm first token 443 | tts first byte 251 | search -
+2026-11-12 10:44:42,180 | INFO    | voice-agent.usage | reply #2 | llm 1875 in (0 cached) / 42 out, tts 57 chars, stt 7.7 s (since last reply), search tavily 0 (0 cr) exa 0 | COST 0.19143 INR (llm 0.01454, tts 0.11400, stt 0.06288, search 0.00000)
+2026-11-12 10:44:51,043 | INFO    | voice-agent.wake | ASLEEP (idle 10 s): STT off, waiting for 'Alexa'
+2026-11-12 10:44:53,384 | INFO    | voice-agent.usage | session 20261112-104410 ended | 2 replies | [usage] session total: llm 2758 in / 87 out tokens, tts 126 chars (+336 filler pre-render), stt 18.6 s, tavily 0 credits, exa 0 requests, session length 42 s | SESSION COST 1.10 INR (llm 0.0221, tts 0.9240, stt 0.1519, search 0.0000)
+2026-11-12 10:44:53,385 | INFO    | voice-agent.usage | session 20261112-104410 cost | llm 0.02211 INR tts 0.92400 INR stt 0.15190 INR search 0.00000 INR | TOTAL 1.10 INR | replies 0.41049 INR + fillers/unfinished turns 0.68752 INR
